@@ -45,6 +45,8 @@ export function ModelManager() {
     updateModelTransform,
     audioState,
     addMotionToModel, // Kept this as it's used in the new UI
+    addMotionFromUrl,
+    updateModelMorph
   } = useStore();
 
   const [expandedTransformId, setExpandedTransformId] = useState<string | null>(null);
@@ -192,12 +194,29 @@ export function ModelManager() {
                   type="file" 
                   className="hidden" 
                   accept=".pmx,.pmd"
-                  onChange={handleFileUpload}
                 />
               </label>
             )}
 
-
+            {/* Debug Demo Button - Ganyu Local */}
+             <button
+                onClick={() => {
+                  // Use relative paths from public/demo folder
+                  const modelId = addModelFromUrl('Ganyu (Debug)', '/demo/Ganyu/Ganyu.pmx');
+                  
+                  if (modelId) {
+                      setTimeout(() => {
+                           addMotionFromUrl(modelId as any, 'Hip Swing', '/demo/Motions/Hip_swing.vmd');
+                           setActiveModel(modelId as any);
+                      }, 200);
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-indigo-500/20 hover:bg-indigo-500/30 rounded-lg text-xs text-indigo-300 transition-colors border border-indigo-500/30 font-bold"
+                title="Load Ganyu + Hip Swing from D:/MMD"
+              >
+                <PlayCircle className="w-4 h-4" />
+                Demo: Ganyu (Local)
+              </button>
           </div>
 
           {/* Model List */}
@@ -541,6 +560,34 @@ export function ModelManager() {
                     />
                      <span className="text-[10px] text-gray-400 w-8 text-right font-mono">{model.scale.toFixed(2)}</span>
                   </div>
+
+                  {/* Morphs Section */}
+                  {(model.availableMorphs || []).length > 0 && (
+                      <div className="pt-4 mt-2 border-t border-white/10">
+                          <div className="text-xs text-gray-400 mb-2 font-bold flex items-center gap-2">
+                             <Layers className="w-3 h-3" /> Morphs ({model.availableMorphs!.length})
+                          </div>
+                          <div className="max-h-60 overflow-y-auto pr-2 custom-scrollbar space-y-3">
+                              {model.availableMorphs!.map(morph => (
+                                  <div key={morph} className="space-y-1">
+                                      <div className="flex justify-between text-[10px] text-gray-400">
+                                          <span className="truncate max-w-[140px] text-gray-300" title={morph}>{morph}</span>
+                                          <span className="font-mono text-indigo-300 text-[9px]">
+                                              {(model.activeMorphs?.[morph] || 0).toFixed(2)}
+                                          </span>
+                                      </div>
+                                      <input 
+                                          type="range"
+                                          min="0" max="1" step="0.01"
+                                          value={model.activeMorphs?.[morph] || 0}
+                                          onChange={(e) => updateModelMorph(model.id, morph, parseFloat(e.target.value))}
+                                          className="w-full accent-indigo-500 h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer hover:bg-white/20 transition-colors"
+                                      />
+                                  </div>
+                              ))}
+                          </div>
+                      </div>
+                  )}
                 </div>
              </div>
          );

@@ -34,17 +34,27 @@ export const GenshinToonShader = {
     varying vec3 vWorldPosition;
 
     #include <common>
+    #include <uv_pars_vertex>
     #include <skinning_pars_vertex>
+    #include <morphtarget_pars_vertex>
 
     void main() {
       vUv = uv;
       
-      #include <skinbase_vertex>
+      // CORRECT ORDER for skinning:
+      // 1. begin_vertex sets transformed = position
+      // 2. morphtarget_vertex applies morph offsets to transformed
+      // 3. skinbase_vertex sets up skinVertex from bindMatrix * position
+      // 4. skinning_vertex applies bone matrices to transformed
       #include <begin_vertex>
+      #include <morphtarget_vertex>
+      #include <skinbase_vertex>
       #include <skinning_vertex>
+      
+      // Normals
       #include <beginnormal_vertex>
-      #include <defaultnormal_vertex>
       #include <skinnormal_vertex>
+      #include <defaultnormal_vertex>
       
       vNormal = normalize(normalMatrix * objectNormal);
       

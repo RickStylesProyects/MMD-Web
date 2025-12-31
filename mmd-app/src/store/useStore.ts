@@ -13,6 +13,10 @@ export interface MMDModel {
   motionFile?: File;
   motions: { id: string; name: string; url: string; file?: File; active: boolean }[]; // List of available motions
   activeMotionId: string | null; // Deprecated, but keeping for compatibility if needed temporarily
+  
+  // Morphs
+  activeMorphs?: Record<string, number>;
+  availableMorphs?: string[];
 
   isLocalUrl?: boolean;
   position: [number, number, number];
@@ -97,9 +101,15 @@ export interface MMDStore {
   addModelFromUrl: (name: string, url: string) => void;
   removeModel: (id: string) => void;
   setActiveModel: (id: string) => void;
+  setActiveModel: (id: string) => void;
   addMotionToModel: (modelId: string, file: File) => void;
+  addMotionFromUrl: (modelId: string, name: string, url: string) => void;
   removeMotionFromModel: (modelId: string) => void;
   
+  // Morph Actions
+  setAvailableMorphs: (modelId: string, morphs: string[]) => void;
+  updateModelMorph: (modelId: string, morphName: string, value: number) => void;
+
   // Stage Actions
   addStage: (file: File) => void;
   addStageFromUrl: (name: string, url: string) => void;
@@ -215,6 +225,8 @@ export const useStore = create<MMDStore>()(
           visible: true,
           motions: [],
           activeMotionId: null,
+          activeMorphs: {},
+          availableMorphs: []
         };
         set((state) => ({ 
           models: [...state.models, newModel],
@@ -223,8 +235,9 @@ export const useStore = create<MMDStore>()(
       },
       
       addModelFromUrl: (name: string, url: string) => {
+        const id = uuidv4();
         const newModel: MMDModel = {
-          id: uuidv4(),
+          id,
           name,
           url,
           isLocalUrl: true,
@@ -234,11 +247,14 @@ export const useStore = create<MMDStore>()(
           visible: true,
           motions: [],
           activeMotionId: null,
+          activeMorphs: {},
+          availableMorphs: []
         };
         set((state) => ({ 
           models: [...state.models, newModel],
           activeModelId: state.activeModelId ? state.activeModelId : newModel.id 
         }));
+        return id;
       },
       
       removeModel: (id: string) => {
@@ -289,6 +305,30 @@ export const useStore = create<MMDStore>()(
         }));
       },
       
+      addMotionFromUrl: (modelId: string, name: string, url: string) => {
+        console.log("Adding motion from URL:", { modelId, name, url });
+        const newMotion = { id: uuidv4(), name, url, active: true };
+        
+        set((state) => {
+           const modelExists = state.models.find(m => m.id === modelId);
+           console.log("Model found in store?", !!modelExists, state.models.map(m => m.id));
+           
+           return {
+              models: state.models.map((m) => {
+                if (m.id === modelId) {
+                  return { 
+                    ...m, 
+                    motions: [...(m.motions || []), newMotion],
+                    activeMotionId: newMotion.id,
+                  };
+                }
+                return m;
+              }),
+              animationState: { ...state.animationState, isPlaying: true, currentTime: 0 }
+           };
+        });
+      },
+      
       removeMotionFromModel: (modelId: string) => {
         set((state) => ({
           models: state.models.map((m) => {
@@ -301,6 +341,20 @@ export const useStore = create<MMDStore>()(
           animationState: defaultAnimationState
         }));
       },
+
+      setAvailableMorphs: (modelId: string, morphs: string[]) => set((state) => ({
+        models: state.models.map(m => m.id === modelId ? { ...m, availableMorphs: morphs } : m)
+      })),
+
+      updateModelMorph: (modelId: string, morphName: string, value: number) => set((state) => ({
+        models: state.models.map(m => {
+          if (m.id === modelId) {
+             const newMorphs = { ...m.activeMorphs, [morphName]: value };
+             return { ...m, activeMorphs: newMorphs };
+          }
+          return m;
+        })
+      })),
       
       // Stage Actions
       addStage: (file: File) => {

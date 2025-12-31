@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
-import { MMDLoader, MMDAnimationHelper } from 'three-stdlib';
+import { MMDLoader, MMDAnimationHelper, CCDIKSolver } from 'three-stdlib';
 import { SkinnedMesh, ShaderMaterial, UniformsUtils, AnimationMixer, AnimationClip } from 'three';
 import { Outlines } from '@react-three/drei';
 import { GenshinToonShader } from '../materials/GenshinShader';
@@ -36,19 +36,27 @@ export function MMDCharacter({
   const { hasPhysics } = useAmmo();
   
   // Animation state from store
-  const { 
+  const {
     animationState, 
     setCurrentTime, 
     setDuration,
     setPlaying,
     shaderSettings,
-    lightSettings
+    lightSettings,
+    models,
+    setAvailableMorphs
   } = useStore();
+  
+  const currentModel = models.find(m => m.url === url || (url.startsWith('blob:') && m.url.includes(url)));
   
   // Refs
   const meshRef = useRef<THREE.SkinnedMesh | null>(null);
   const helperRef = useRef<MMDAnimationHelper | null>(null);
-  const loaderRef = useRef<MMDLoader>(new MMDLoader());
+  const mixerRef = useRef<AnimationMixer | null>(null);
+  const isExternalMixerRef = useRef(false);
+  const ikSolverRef = useRef<any>(null);
+  // useMemo for loader to avoid re-instantiation and ensure stable reference
+  const loader = useMemo(() => new MMDLoader(), []);
   
   // State
   const [mesh, setMesh] = useState<THREE.SkinnedMesh | null>(null);
@@ -67,6 +75,9 @@ export function MMDCharacter({
         const applyShader = (oldMat: any) => {
           if (oldMat.userData?.isGenshin) return oldMat;
           
+          // CRITICAL FIX: Use `defines` to enable skinning/morph in shaders
+          // In modern Three.js, 'skinning' and 'morphTargets' are NOT material properties
+          // They must be set as shader defines to inject the correct GLSL code.
           const shaderMat = new ShaderMaterial({
             uniforms: UniformsUtils.clone(GenshinToonShader.uniforms),
             vertexShader: GenshinToonShader.vertexShader,
@@ -74,8 +85,15 @@ export function MMDCharacter({
             lights: true,
             transparent: true,
             side: THREE.DoubleSide,
+            // CORRECT WAY: Use defines instead of properties
+            defines: {
+              USE_SKINNING: '',
+              USE_MORPHTARGETS: '',
+              USE_MORPHNORMALS: ''
+            }
           });
-
+          
+          // Copy old material texture/color
           if (oldMat.map) {
             shaderMat.uniforms.uMap.value = oldMat.map;
             shaderMat.uniforms.uHasMap.value = 1.0;
@@ -89,13 +107,19 @@ export function MMDCharacter({
           
           shaderMat.userData = { isGenshin: true };
           shaderMat.needsUpdate = true;
+          
           return shaderMat;
         };
 
-        if (Array.isArray(m.material)) {
-          m.material = m.material.map(applyShader);
-        } else {
-          m.material = applyShader(m.material);
+        try {
+          if (Array.isArray(m.material)) {
+            m.material = m.material.map(applyShader);
+          } else {
+            m.material = applyShader(m.material);
+          }
+          console.log("🎨 Shader applied with Skinning enabled");
+        } catch (e) {
+          console.error("❌ Shader application failed:", e);
         }
       }
     });
@@ -108,38 +132,64 @@ export function MMDCharacter({
     setIsLoading(true);
     setLoadError(null);
     setAnimationLoaded(false);
+    console.log("🛠️ SYSTEM UPDATE: Physics Engine v2 Loaded"); // Verify update code
     
-    const loader = loaderRef.current;
+    // const loader = loaderRef.current; // Removed this line
     
-    const initializeHelper = (loadedMesh: THREE.SkinnedMesh) => {
-      // Create MMDAnimationHelper - this handles both animation and physics
-      if (hasPhysics && window.Ammo) {
-        try {
-          const helper = new MMDAnimationHelper({ 
-            afterglow: 2.0,
-            resetPhysicsOnLoop: true 
-          });
-          
-          // Initialize with physics ONLY
-          // We omit 'animation' param to let helper default safely
-          try {
-             helper.add(loadedMesh, { 
-               physics: true 
-             });
-             console.log("✅ MMD Physics initialized");
-          } catch (physicsError) {
-             console.error("❌ Physics init failed:", physicsError);
-             console.warn("⚠️ Attempting Safe Mode (No Physics) due to critical error.");
-             helper.add(loadedMesh, { physics: false });
-          }
-          
-          helperRef.current = helper;
-          console.log("✅ MMD Animation Helper ready");
-        } catch (e) {
-          console.error("⚠️ Helper creation failed, using standalone mixer:", e);
+    const initializeRobustSystem = (loadedMesh: THREE.SkinnedMesh) => {
+      // Initialize MMDAnimationHelper with Physics and IK enabled
+      try {
+        // Create helper if not exists
+        const helper = new MMDAnimationHelper({
+          afterglow: 2.0,
+          resetPhysicsOnLoop: true,
+        });
+        
+        // Add mesh to helper - CRITICAL: This sets up the internal Mixer, IK Solver, and Physics
+        helper.add(loadedMesh, {
+          animation: [],       // Pass empty array to FORCE Mixer creation
+          physics: hasPhysics,  // Enable physics if Ammo is loaded
+          warmup: 60,           // Stabilization frames for physics
+          ik: true,            // Enable IK solver
+          grant: true          // Enable grant solver (parenting/physics)
+        });
+        
+        helperRef.current = helper;
+        
+        // INSPECT HELPER OBJECTS
+        // @ts-ignore
+        const entry = helper.objects.get(loadedMesh);
+        console.log("🕵️ Helper Entry Inspection:", {
+            hasEntry: !!entry,
+            keys: entry ? Object.keys(entry) : [],
+            mixer: !!entry?.mixer,
+            ikSolver: !!entry?.ikSolver,
+            physics: !!entry?.physics,
+            hasPhysicsProp: hasPhysics
+        });
+
+        // Extract the mixer created by the helper
+        // @ts-ignore
+        const mixer = entry?.mixer;
+        mixerRef.current = mixer;
+        isExternalMixerRef.current = false;
+        
+        if (!mixer) {
+            console.error("❌ CRITICAL: Mixer missing from Helper!", entry);
+            // Fallback
+             mixerRef.current = new AnimationMixer(loadedMesh);
         }
-      } else {
-        // Fallback for no physics
+        
+        // Expose IK solver ref just for debug (optional)
+        // @ts-ignore
+        ikSolverRef.current = entry?.ikSolver;
+
+        console.log(`✅ System Ready: Helper initialized | Physics: ${hasPhysics} | IK: ${!!ikSolverRef.current} | Mixer: ${!!mixerRef.current}`);
+        
+      } catch (err) {
+        console.error("❌ MMD Helper Init Failed:", err);
+        // Fallback to basic mixer if helper fails (unlikely)
+        mixerRef.current = new AnimationMixer(loadedMesh);
       }
     };
 
@@ -149,7 +199,7 @@ export function MMDCharacter({
       const cachedMesh = modelCache.get(url)!.clone();
       meshRef.current = cachedMesh;
       applyGenshinShader(cachedMesh);
-      initializeHelper(cachedMesh);
+      initializeRobustSystem(cachedMesh);
       setMesh(cachedMesh);
       setIsLoading(false);
       return;
@@ -162,6 +212,11 @@ export function MMDCharacter({
       modifiedUrl,
       (loadedMesh) => {
         console.log("✅ MMD Model loaded successfully");
+        // DEBUG: Check Bone Names
+        if (loadedMesh.skeleton && loadedMesh.skeleton.bones) {
+            console.log("🍖 Model Bones (First 5):", loadedMesh.skeleton.bones.slice(0, 5).map(b => b.name));
+            console.log("🍖 Model Morphs (Keys):", Object.keys(loadedMesh.morphTargetDictionary || {}));
+        }
         
         // Cache the original mesh
         if (!url.startsWith('blob:')) {
@@ -171,7 +226,18 @@ export function MMDCharacter({
         
         meshRef.current = loadedMesh;
         applyGenshinShader(loadedMesh);
-        initializeHelper(loadedMesh);
+        initializeRobustSystem(loadedMesh);
+        
+        // Populate Available Morphs
+        if (loadedMesh.morphTargetDictionary) {
+            const morphs = Object.keys(loadedMesh.morphTargetDictionary);
+            if (currentModel) {
+                console.log("😊 Registering Morphs:", morphs.length, "for model ID:", currentModel.id, "URL:", url);
+                setAvailableMorphs(currentModel.id, morphs);
+            } else {
+                console.warn("⚠️ Morphs found but currentModel is NULL. Model URL:", url, "Store URLs:", models.map(m => m.url));
+            }
+        }
         
         setMesh(loadedMesh);
         setIsLoading(false);
@@ -200,7 +266,7 @@ export function MMDCharacter({
       setMesh(null);
       setAnimationLoaded(false);
     };
-  }, [url, hasPhysics, applyGenshinShader]);
+  }, [url, hasPhysics, applyGenshinShader, loader]);
   
   // =========================================================
   // MULTI-TRACK MOTION HANDLING (Blending)
@@ -210,96 +276,100 @@ export function MMDCharacter({
   
   // 1. Load active motions
   useEffect(() => {
-    if (!mesh || !motions) return;
+    if (!mesh || !motions) {
+        console.log("⚠️ Skipping motion load: mesh or motions missing", { mesh: !!mesh, motionsLen: motions?.length });
+        return;
+    }
     
     motions.forEach(bgMotion => {
       // Check if already loaded
-      if (loadedClips.has(bgMotion.url) || animationCache.has(bgMotion.url)) return;
+      if (loadedClips.has(bgMotion.url) || animationCache.has(bgMotion.url)) {
+          console.log("⏩ Motion already cached/loaded:", bgMotion.name);
+          return;
+      }
       
-      console.log("⬇️ Loading motion:", bgMotion.name);
+      console.log("⬇️ Starting load for motion:", bgMotion.name, bgMotion.url);
       
-      // Use loaderRef to load
-      loaderRef.current.loadAnimation(
+      // Use loader from useMemo
+      loader.loadAnimation(
         bgMotion.url,
         mesh, // Bind to current mesh
         (clip) => {
-           console.log("✅ Motion loaded:", bgMotion.name);
+           console.log("✅ Motion loaded successfully:", bgMotion.name);
+           // DEBUG: Comprehensive Animation Track Analysis
+           console.log("🎬 === ANIMATION DEBUG ===");
+           console.log("🎬 Total tracks:", clip.tracks.length);
+           
+           // Show ALL tracks for full analysis
+           const trackNames = clip.tracks.map(t => t.name);
+           console.log("🎬 All Track Names:", trackNames);
+           
+           // Check for leg-related tracks (Japanese + English)
+           const legKeywords = ['足', '脚', 'leg', 'Leg', 'knee', 'ひざ', 'ankle', '足首', 'IK'];
+           const legTracks = trackNames.filter(name => 
+             legKeywords.some(keyword => name.includes(keyword))
+           );
+           console.log("🦵 Leg-related tracks found:", legTracks.length > 0 ? legTracks : "NONE - This is the problem!");
+           
+           // Check model bone names for comparison
+           if (mesh.skeleton?.bones) {
+             const legBones = mesh.skeleton.bones.filter(b => 
+               legKeywords.some(keyword => b.name.includes(keyword))
+             ).map(b => b.name);
+             console.log("🦵 Model leg bones:", legBones);
+           }
+           console.log("🎬 === END DEBUG ===");
+           
            // Cache it
            if (!bgMotion.url.startsWith('blob:')) {
              animationCache.set(bgMotion.url, clip);
            }
            setLoadedClips(prev => new Map(prev).set(bgMotion.url, clip));
         },
-        undefined,
+        (xhr) => {
+            if (xhr.lengthComputable) {
+                const percentComplete = xhr.loaded / xhr.total * 100;
+                // console.log(Math.round(percentComplete, 2) + '% downloaded');
+            }
+        },
         (err) => console.error("❌ Failed to load motion:", bgMotion.name, err)
       );
     });
-  }, [motions, mesh, loadedClips]);
+  }, [motions, mesh, loadedClips, loader]);
   
-  // 2. Sync Mixer (Play/Stop/Blend)
+  // 2. Sync Mixer (Play/Stop/Blend) - Direct mixer approach
   useEffect(() => {
     if (!mesh) return;
     
-    // Get Mixer from Helper
-    let mixer: AnimationMixer | null = null;
-    
-    if (helperRef.current) {
-      try {
-        const objects = (helperRef.current as any).objects;
-        mixer = objects.get(mesh)?.mixer;
-        
-        // If mixer not found (maybe physics init failed?), try add again?
-        if (!mixer) {
-           // Fallback: This shouldn't happen if initHelper worked
-           console.warn("Mixer missing from helper, attempting re-add");
-           helperRef.current.add(mesh, { physics: hasPhysics });
-           mixer = objects.get(mesh)?.mixer;
-        }
-      } catch (e) {
-        console.error("Error accessing helper mixer:", e);
-      }
-    }
-    
-    // Fallback mixer if no helper (no physics)
-    if (!mixer) {
-       if (!(mesh as any)._fallbackMixer) {
-          (mesh as any)._fallbackMixer = new AnimationMixer(mesh);
-       }
-       mixer = (mesh as any)._fallbackMixer;
-    }
-    
+    const mixer = mixerRef.current;
     if (!mixer) return;
     
-    // --- BLENDING LOGIC ---
     let maxDuration = 0;
     let hasActive = false;
-    
-    // Add manual animation props support (props.motionUrl logic removed)
-    // Only use 'motions' array
     
     if (motions && motions.length > 0) {
       motions.forEach(m => {
         const clip = loadedClips.get(m.url) || animationCache.get(m.url);
         
-        // Get action
-        if (clip) {
-          const action = mixer!.clipAction(clip);
+        if (clip && m.active) {
+          // Use standard mixer - IK is handled by CCDIKSolver in render loop
+          const action = mixer.clipAction(clip);
+          if (!action.isRunning()) {
+            action.reset();
+            action.play();
+            action.setLoop(THREE.LoopRepeat, Infinity);
+            console.log("🎬 Playing animation (IK via CCDIKSolver):", m.name || m.url);
+          }
+          action.setEffectiveWeight(1);
           
-          if (m.active) {
-            // PLAY
-            if (!action.isRunning()) {
-              action.reset();
-              action.play();
-              action.fadeIn(0.3); // Smooth blend
-            }
-            action.setEffectiveWeight(1);
-            if (clip.duration > maxDuration) maxDuration = clip.duration;
-            hasActive = true;
-          } else {
-            // STOP (Fade out)
-            if (action.isRunning()) {
-               action.fadeOut(0.3);
-            }
+          if (clip.duration > maxDuration) maxDuration = clip.duration;
+          hasActive = true;
+          
+        } else if (clip && !m.active) {
+          // STOP animation
+          const action = mixer.clipAction(clip);
+          if (action.isRunning()) {
+            action.fadeOut(0.3);
           }
         }
       });
@@ -308,7 +378,6 @@ export function MMDCharacter({
     if (hasActive) {
       setDuration(maxDuration);
       setAnimationLoaded(true);
-      // Don't auto-stop playing here, let global state control that
     }
     
   }, [motions, loadedClips, mesh, hasPhysics, setDuration, setAnimationLoaded]);
@@ -317,84 +386,99 @@ export function MMDCharacter({
   const lastTimeRef = useRef(0);
   
   // Animation loop - use MMDAnimationHelper.update() which handles both animation and physics
+  // Animation loop - updates physics, animation, and shaders
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05); // Cap delta for stability
-    
-    // Only update animation if playing
-    const shouldUpdate = animationState.isPlaying && animationLoaded;
-    
-    // Handle scrubbing (when currentTime changes externally)
-    if (animationLoaded && helperRef.current) {
-      const helper = helperRef.current;
-      const objects = (helper as any).objects;
-      
-      if (objects && objects.size > 0) {
-        // Check if time was changed externally (scrubbing)
-        const timeDiff = Math.abs(animationState.currentTime - lastTimeRef.current);
-        if (timeDiff > 0.1 && !animationState.isPlaying) {
-          // Scrub to new time
-          for (const [mesh, mixerInfo] of objects) {
-            if (mixerInfo.mixer) {
-              mixerInfo.mixer.setTime(animationState.currentTime);
-            }
+    // RELAXED CONDITION: Run if mesh exists and we are "playing".
+    // Even if animationLoaded is false, we want physics to run.
+    const shouldUpdate = animationState.isPlaying && !!mesh;
+
+    // 1. ANIMATION & PHYSICS UPDATE
+    if (shouldUpdate) {
+       const step = dt * animationState.playbackSpeed;
+
+       // helper.update() automatically handles:
+       // - Mixer update
+       // - IK Solver update
+       // - Physics update
+       // - Grant Solver update
+       if (helperRef.current) {
+         try {
+           helperRef.current.update(step);
+           
+           // Debug log occasionally
+           if (!window._helperUpdateLogged) {
+             window._helperUpdateLoggedCounters = (window._helperUpdateLoggedCounters || 0) + 1;
+             if (window._helperUpdateLoggedCounters % 120 === 0) { // Log every ~2 seconds at 60fps
+                console.log(`⏱️ Loop: MixerTime=${mixerRef.current?.time.toFixed(3)} | ActionRunning=${mixerRef.current?._actions?.[0]?.isRunning()} | Physics=${!!helperRef.current.physics} | IK=${!!ikSolverRef.current}`);
+             }
+           }
+           
+         } catch (e) {
+           console.error("Helper update error:", e);
+         }
+       } else if (mixerRef.current) {
+         // Fallback if helper missing for some reason
+         mixerRef.current.update(step);
+       }
+    }
+
+       // --- MANUAL MORPH APPLICATION ---
+       if (currentModel && currentModel.activeMorphs && mesh.morphTargetDictionary) {
+           Object.entries(currentModel.activeMorphs).forEach(([name, value]) => {
+               const index = mesh.morphTargetDictionary[name];
+               if (index !== undefined) {
+                   mesh.morphTargetInfluences[index] = value;
+               }
+           });
+       }
+
+
+    // 2. TIME SYNC, LOOPING & SCRUBBING
+    if (mixerRef.current) {
+       // Sync store time
+       const currentTime = mixerRef.current.time;
+       if (shouldUpdate && Math.abs(currentTime - lastTimeRef.current) > 0.016) {
+          lastTimeRef.current = currentTime;
+          setCurrentTime(currentTime);
+       }
+       
+       // Handle Loop Reset
+       if (shouldUpdate && animationState.loop && animationState.duration > 0) {
+          if (currentTime >= animationState.duration) {
+             mixerRef.current.setTime(0);
+             // Reset physics to prevent clothing glitches
+             try {
+                const physics = (helperRef.current as any)?.physics;
+                if (physics?.reset) physics.reset();
+             } catch {}
           }
-        }
-        
-        // Update current time in store
-        for (const [mesh, mixerInfo] of objects) {
-          if (mixerInfo.mixer) {
-            const currentTime = mixerInfo.mixer.time;
-            if (Math.abs(currentTime - lastTimeRef.current) > 0.016) {
-              lastTimeRef.current = currentTime;
-              setCurrentTime(currentTime);
-            }
-            
-            // Apply playback speed
-            mixerInfo.mixer.timeScale = animationState.playbackSpeed;
-            
-            // Handle looping
-            if (currentTime >= animationState.duration && animationState.duration > 0) {
-              if (animationState.loop) {
-                mixerInfo.mixer.setTime(0);
-                // Reset physics to prevent clothing glitches
-                try {
-                   const physics = (helperRef.current as any).physics;
-                   if (physics && physics.reset) {
-                      physics.reset();
-                   }
-                } catch (e) {
-                   console.warn("Physics reset failed:", e);
-                }
-              }
-            }
+       }
+       
+       // Handle Manual Scrubbing (when paused)
+       if (!animationState.isPlaying && Math.abs(animationState.currentTime - lastTimeRef.current) > 0.1) {
+          mixerRef.current.setTime(animationState.currentTime);
+          lastTimeRef.current = animationState.currentTime;
+          
+          // Also sync helper internal mixers if they exist (for IK solver update)
+          if (helperRef.current) {
+             const objects = (helperRef.current as any).objects;
+             if (objects) {
+                 for (const [_, mixerInfo] of objects) {
+                     if (mixerInfo.mixer) mixerInfo.mixer.setTime(animationState.currentTime);
+                 }
+             }
           }
-        }
-      }
+       }
     }
-    
-    // Update via helper (handles animation + physics) only if playing
-    if (helperRef.current && shouldUpdate) {
-      try {
-         helperRef.current.update(dt * animationState.playbackSpeed);
-      } catch (err) {
-         console.error("💥 Physics Update Crash (Disabling Helper):", err);
-         helperRef.current = null; // Emergency disable to prevent app crash
-      }
-    }
-    
-    // Fallback mixer update
-    if (meshRef.current && (meshRef.current as any)._fallbackMixer && shouldUpdate) {
-      const mixer = (meshRef.current as any)._fallbackMixer;
-      mixer.timeScale = animationState.playbackSpeed;
-      mixer.update(dt);
-    }
-    
-    // Update shader uniforms from store settings
+
+    // 3. SHADER UNIFORM UPDATES
     if (meshRef.current) {
       meshRef.current.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const m = child as THREE.Mesh;
           const materials = Array.isArray(m.material) ? m.material : [m.material];
+          
           materials.forEach((mat) => {
             if (mat instanceof ShaderMaterial && mat.userData?.isGenshin) {
               // Shader Settings
@@ -414,8 +498,8 @@ export function MMDCharacter({
         }
       });
     }
-    
-    // Procedural behaviors only when no animation is playing
+
+    // 4. PROCEDURAL BEHAVIORS (Blinking/Breathing when idle)
     if (meshRef.current && !animationLoaded) {
       updateProceduralBehaviors(meshRef.current, state, dt);
     }
