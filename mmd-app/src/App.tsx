@@ -1,20 +1,31 @@
 import { Scene } from './components/Scene';
 import { ModelManager } from './components/ModelManager';
 import { AmmoProvider } from './components/AmmoProvider';
+import { SettingsPanel } from './components/SettingsPanel';
+import { AnimationPlayer } from './components/AnimationPlayer';
 
 function App() {
   return (
     <div className="w-full h-screen relative overflow-hidden bg-black">
       <AmmoProvider>
+        {/* Left Panel - Models & Stages */}
         <ModelManager />
+        
+        {/* Right Panel - Settings */}
+        <SettingsPanel />
+        
+        {/* 3D Scene */}
         <div className="w-full h-full">
           <Scene />
         </div>
+        
+        {/* Bottom - Animation Player */}
+        <AnimationPlayer />
       </AmmoProvider>
       
       {/* Footer / Overlay Info */}
       <div className="absolute bottom-4 right-4 text-white/30 text-xs pointer-events-none">
-        MMD Web App - v0.1.0
+        MMD Web App - v0.2.0
       </div>
     </div>
   );

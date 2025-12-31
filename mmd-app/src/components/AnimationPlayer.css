@@ -1,0 +1,154 @@
+.animation-player {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(600px, 90vw);
+  background: rgba(20, 20, 35, 0.95);
+  border-radius: 16px;
+  padding: 16px 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 1000;
+}
+
+/* Timeline */
+.timeline-container {
+  margin-bottom: 12px;
+}
+
+.timeline {
+  width: 100%;
+  height: 8px;
+  -webkit-appearance: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+}
+
+.timeline::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  background: #6366f1;
+  border-radius: 50%;
+  cursor: grab;
+  transition: transform 0.1s ease;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.5);
+}
+
+.timeline::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.timeline::-webkit-slider-thumb:active {
+  cursor: grabbing;
+}
+
+.time-display {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: #a0a0c0;
+  font-family: 'Fira Code', monospace;
+}
+
+.time-display span:nth-child(2) {
+  color: #666;
+}
+
+/* Controls */
+.player-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.controls-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.control-btn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e0e0ff;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.control-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: scale(1.05);
+}
+
+.control-btn:active {
+  transform: scale(0.95);
+}
+
+.control-btn.active {
+  background: rgba(99, 102, 241, 0.3);
+  color: #6366f1;
+}
+
+.control-btn.play-btn {
+  width: 52px;
+  height: 52px;
+  font-size: 20px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+}
+
+.control-btn.play-btn:hover {
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+}
+
+.control-btn.play-btn.playing {
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.4);
+}
+
+/* Speed select */
+.speed-select {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e0e0ff;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.2s ease;
+}
+
+.speed-select:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.speed-select option {
+  background: #1a1a2e;
+  color: #e0e0ff;
+}
+
+/* Animation name display could be added here */
+.animation-name {
+  text-align: center;
+  font-size: 12px;
+  color: #6666aa;
+  margin-bottom: 8px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}

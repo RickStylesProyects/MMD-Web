@@ -1,8 +1,9 @@
-import { Suspense, useMemo } from 'react';
+import { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Grid, Environment as DreiEnvironment } from '@react-three/drei';
+import { OrbitControls, Grid } from '@react-three/drei';
 import { useStore } from '../store/useStore';
 import { MMDCharacter } from './MMDCharacter';
+import { MMDStage } from './MMDStage';
 import { Environment as Env } from './Environment';
 import * as THREE from 'three';
 
@@ -18,15 +19,17 @@ function LoadingFallback() {
   );
 }
 
-// Balanced anime-style lighting - softer to preserve colors
-function AnimeStyleLighting() {
+// Dynamic lighting component that reads from store
+function DynamicLighting() {
+  const { lightSettings } = useStore();
+  
   return (
     <>
-      {/* Key Light - Main light from front, reduced intensity */}
+      {/* Key Light - Main light from front */}
       <directionalLight 
-        position={[2, 5, -8]} 
-        intensity={1.0} 
-        color="#fff8f0"
+        position={lightSettings.keyPosition as [number, number, number]} 
+        intensity={lightSettings.keyIntensity} 
+        color={lightSettings.keyColor}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
@@ -41,26 +44,29 @@ function AnimeStyleLighting() {
       {/* Face Light - Soft frontal */}
       <directionalLight 
         position={[0, 3, -6]} 
-        intensity={0.4} 
+        intensity={lightSettings.keyIntensity * 0.4} 
         color="#ffffff"
       />
       
-      {/* Fill Light - Left side, very soft */}
+      {/* Fill Light */}
       <directionalLight 
         position={[-4, 4, -4]} 
-        intensity={0.25} 
-        color="#c8d8ff"
+        intensity={lightSettings.fillIntensity} 
+        color={lightSettings.fillColor}
       />
       
       {/* Rim Light - Behind for edge glow */}
       <directionalLight 
         position={[0, 4, 6]} 
-        intensity={0.35} 
-        color="#ffeedd"
+        intensity={lightSettings.rimIntensity} 
+        color={lightSettings.rimColor}
       />
       
-      {/* Ambient - Reduced for better contrast */}
-      <ambientLight intensity={0.3} color="#8888a0" />
+      {/* Ambient */}
+      <ambientLight 
+        intensity={lightSettings.ambientIntensity} 
+        color={lightSettings.ambientColor} 
+      />
       
       {/* Hemisphere for subtle gradient */}
       <hemisphereLight 
@@ -70,32 +76,19 @@ function AnimeStyleLighting() {
   );
 }
 
-export function Scene() {
-  const { activeModelId, models } = useStore();
+// Scene content component (inside Canvas)
+function SceneContent() {
+  const { activeModelId, models, activeStageId, stages } = useStore();
   const activeModel = models.find(m => m.id === activeModelId);
+  const activeStage = stages.find(s => s.id === activeStageId);
 
   return (
-    <Canvas
-      className="w-full h-full"
-      camera={{ position: [0, 1.2, 3], fov: 45 }}
-      shadows
-      gl={{ 
-        antialias: true,
-        alpha: false,
-        powerPreference: 'high-performance',
-        toneMapping: THREE.ACESFilmicToneMapping,
-        toneMappingExposure: 1.2,
-      }}
-      onCreated={({ gl }) => {
-        gl.shadowMap.enabled = true;
-        gl.shadowMap.type = THREE.PCFSoftShadowMap;
-      }}
-    >
+    <>
       {/* Background gradient */}
       <Env />
 
-      {/* Anime-style three-point lighting */}
-      <AnimeStyleLighting />
+      {/* Dynamic lighting from store */}
+      <DynamicLighting />
 
       {/* Grid Helper (subtle) */}
       <Grid 
@@ -113,11 +106,21 @@ export function Scene() {
         makeDefault 
         target={[0, 0.8, 0]} 
         minDistance={1}
-        maxDistance={10}
+        maxDistance={100}
         enablePan={true}
         enableDamping={true}
         dampingFactor={0.05}
       />
+
+      {/* Stage */}
+      <Suspense fallback={null}>
+        {activeStage && (
+          <MMDStage 
+            url={activeStage.url} 
+            key={activeStage.id} 
+          />
+        )}
+      </Suspense>
 
       {/* Model */}
       <Suspense fallback={<LoadingFallback />}>
@@ -129,7 +132,29 @@ export function Scene() {
           />
         )}
       </Suspense>
+    </>
+  );
+}
 
+export function Scene() {
+  return (
+    <Canvas
+      className="w-full h-full"
+      camera={{ position: [0, 1.2, 3], fov: 45 }}
+      shadows
+      gl={{ 
+        antialias: true,
+        alpha: false,
+        powerPreference: 'high-performance',
+        toneMapping: THREE.ACESFilmicToneMapping,
+        toneMappingExposure: 1.2,
+      }}
+      onCreated={({ gl }) => {
+        gl.shadowMap.enabled = true;
+        gl.shadowMap.type = THREE.PCFSoftShadowMap;
+      }}
+    >
+      <SceneContent />
     </Canvas>
   );
 }

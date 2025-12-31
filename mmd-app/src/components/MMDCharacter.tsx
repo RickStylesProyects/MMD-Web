@@ -6,6 +6,7 @@ import { SkinnedMesh, ShaderMaterial, UniformsUtils, AnimationMixer, AnimationCl
 import { Outlines } from '@react-three/drei';
 import { GenshinToonShader } from '../materials/GenshinShader';
 import { useAmmo } from './AmmoProvider';
+import { useStore } from '../store/useStore';
 import * as THREE from 'three';
 
 // Simple model cache
@@ -20,6 +21,14 @@ interface MMDCharacterProps {
 export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
   const { scene } = useThree();
   const { hasPhysics } = useAmmo();
+  
+  // Animation state from store
+  const { 
+    animationState, 
+    setCurrentTime, 
+    setDuration,
+    shaderSettings 
+  } = useStore();
   
   // Refs
   const meshRef = useRef<THREE.SkinnedMesh | null>(null);
@@ -194,8 +203,10 @@ export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
             physics: hasPhysics && !!window.Ammo
           });
           
+          
           setAnimationLoaded(true);
-          console.log("✅ Animation applied via MMDAnimationHelper");
+          setDuration(clip.duration);
+          console.log("✅ Animation applied via MMDAnimationHelper, duration:", clip.duration);
         } catch (e) {
           console.error("Failed to apply animation:", e);
           // Fallback to simple mixer
@@ -237,18 +248,85 @@ export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
     
   }, [motionUrl, hasPhysics, mesh]);
   
+  // Track last time for scrubbing detection
+  const lastTimeRef = useRef(0);
+  
   // Animation loop - use MMDAnimationHelper.update() which handles both animation and physics
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05); // Cap delta for stability
     
-    // Update via helper (handles animation + physics)
-    if (helperRef.current) {
-      helperRef.current.update(dt);
+    // Only update animation if playing
+    const shouldUpdate = animationState.isPlaying && animationLoaded;
+    
+    // Handle scrubbing (when currentTime changes externally)
+    if (animationLoaded && helperRef.current) {
+      const helper = helperRef.current;
+      const objects = (helper as any).objects;
+      
+      if (objects && objects.size > 0) {
+        // Check if time was changed externally (scrubbing)
+        const timeDiff = Math.abs(animationState.currentTime - lastTimeRef.current);
+        if (timeDiff > 0.1 && !animationState.isPlaying) {
+          // Scrub to new time
+          for (const [mesh, mixerInfo] of objects) {
+            if (mixerInfo.mixer) {
+              mixerInfo.mixer.setTime(animationState.currentTime);
+            }
+          }
+        }
+        
+        // Update current time in store
+        for (const [mesh, mixerInfo] of objects) {
+          if (mixerInfo.mixer) {
+            const currentTime = mixerInfo.mixer.time;
+            if (Math.abs(currentTime - lastTimeRef.current) > 0.016) {
+              lastTimeRef.current = currentTime;
+              setCurrentTime(currentTime);
+            }
+            
+            // Apply playback speed
+            mixerInfo.mixer.timeScale = animationState.playbackSpeed;
+            
+            // Handle looping
+            if (currentTime >= animationState.duration && animationState.duration > 0) {
+              if (animationState.loop) {
+                mixerInfo.mixer.setTime(0);
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Update via helper (handles animation + physics) only if playing
+    if (helperRef.current && shouldUpdate) {
+      helperRef.current.update(dt * animationState.playbackSpeed);
     }
     
     // Fallback mixer update
-    if (meshRef.current && (meshRef.current as any)._fallbackMixer) {
-      (meshRef.current as any)._fallbackMixer.update(dt);
+    if (meshRef.current && (meshRef.current as any)._fallbackMixer && shouldUpdate) {
+      const mixer = (meshRef.current as any)._fallbackMixer;
+      mixer.timeScale = animationState.playbackSpeed;
+      mixer.update(dt);
+    }
+    
+    // Update shader uniforms from store settings
+    if (meshRef.current) {
+      meshRef.current.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const m = child as THREE.Mesh;
+          const materials = Array.isArray(m.material) ? m.material : [m.material];
+          materials.forEach((mat) => {
+            if (mat instanceof ShaderMaterial && mat.userData?.isGenshin) {
+              mat.uniforms.uShadowDarkness.value = shaderSettings.shadowDarkness;
+              mat.uniforms.uShadowThreshold.value = shaderSettings.shadowThreshold;
+              mat.uniforms.uShadowSoftness.value = shaderSettings.shadowSoftness;
+              mat.uniforms.uRimStrength.value = shaderSettings.rimStrength;
+              mat.uniforms.uSpecularStrength.value = shaderSettings.specularStrength;
+            }
+          });
+        }
+      });
     }
     
     // Procedural behaviors only when no animation is playing
@@ -287,7 +365,7 @@ export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
       position={[0, 0, 0]}
       rotation={[0, Math.PI, 0]} // Rotate to face camera
     >
-      <Outlines thickness={0.02} color="#1a1a2e" />
+      <Outlines thickness={shaderSettings.outlineThickness} color="#1a1a2e" />
     </primitive>
   );
 }
