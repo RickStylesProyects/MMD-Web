@@ -9,11 +9,11 @@ export const GenshinToonShader = {
     uMap: { value: null },
     uHasMap: { value: 0.0 },
     // Cel-shading parameters
-    uShadowSteps: { value: 2.0 }, // Fewer steps for cleaner look
-    uShadowThreshold: { value: 0.45 }, // Where shadow starts
-    uShadowSoftness: { value: 0.08 }, // Edge softness
-    uShadowDarkness: { value: 0.35 }, // How dark shadows are (0 = black, 1 = no shadow)
-    uShadowColor: { value: new THREE.Color('#6a5a8a') }, // Purple-ish shadow tint
+    uShadowSteps: { value: 2.0 },
+    uShadowThreshold: { value: 0.45 },
+    uShadowSoftness: { value: 0.08 },
+    uShadowDarkness: { value: 0.35 },
+    uShadowColor: { value: new THREE.Color('#6a5a8a') },
     // Rim light
     uRimColor: { value: new THREE.Color('#ffffff') },
     uRimStrength: { value: 0.8 },
@@ -21,6 +21,11 @@ export const GenshinToonShader = {
     // Specular
     uSpecularStrength: { value: 0.3 },
     uSpecularPower: { value: 48.0 },
+    // === NEW: Light intensity controls from UI ===
+    uKeyLightIntensity: { value: 1.0 },
+    uFillLightIntensity: { value: 0.25 },
+    uAmbientIntensity: { value: 0.3 },
+    uRimLightIntensity: { value: 0.35 },
   },
   vertexShader: `
     varying vec2 vUv;
@@ -64,6 +69,11 @@ export const GenshinToonShader = {
     uniform float uRimPower;
     uniform float uSpecularStrength;
     uniform float uSpecularPower;
+    // Light controls from UI
+    uniform float uKeyLightIntensity;
+    uniform float uFillLightIntensity;
+    uniform float uAmbientIntensity;
+    uniform float uRimLightIntensity;
 
     varying vec2 vUv;
     varying vec3 vNormal;
@@ -87,17 +97,30 @@ export const GenshinToonShader = {
       vec3 normal = normalize(vNormal);
       vec3 viewDir = normalize(vViewPosition);
 
-      // Get main light direction
-      vec3 lightDir = vec3(0.3, 0.8, -0.5);
-      vec3 lightColor = vec3(1.0);
+      // === KEY LIGHT ===
+      vec3 keyLightDir = vec3(0.3, 0.8, -0.5);
+      vec3 keyLightColor = vec3(1.0);
       
       #if NUM_DIR_LIGHTS > 0
-        lightDir = normalize(directionalLights[0].direction);
-        lightColor = directionalLights[0].color;
+        keyLightDir = normalize(directionalLights[0].direction);
+        keyLightColor = directionalLights[0].color;
       #endif
 
-      // === DIFFUSE WITH CEL-SHADING ===
-      float NdotL = dot(normal, lightDir);
+      // === FILL LIGHT (from left side) ===
+      vec3 fillLightDir = normalize(vec3(-0.7, 0.3, -0.5));
+      float fillNdotL = max(dot(normal, fillLightDir), 0.0);
+      vec3 fillContribution = baseColor * fillNdotL * uFillLightIntensity;
+
+      // === AMBIENT (uniform lighting) ===
+      vec3 ambientContribution = baseColor * uAmbientIntensity;
+
+      // === BACK RIM LIGHT ===
+      vec3 backLightDir = normalize(vec3(0.0, 0.3, 0.8));
+      float backNdotL = max(dot(normal, backLightDir), 0.0);
+      vec3 backRimContribution = baseColor * backNdotL * uRimLightIntensity;
+
+      // === DIFFUSE WITH CEL-SHADING (Key Light) ===
+      float NdotL = dot(normal, keyLightDir);
       float halfLambert = NdotL * 0.5 + 0.5;
       
       // Smooth step for clean shadow edge
@@ -105,28 +128,29 @@ export const GenshinToonShader = {
       
       // Create shadow color by mixing base with shadow tint
       vec3 shadowColor = baseColor * uShadowColor * uShadowDarkness;
-      vec3 litColor = baseColor;
+      vec3 litColor = baseColor * uKeyLightIntensity;
       
       // Mix between shadow and lit based on mask
       vec3 diffuse = mix(shadowColor, litColor, shadowMask);
 
       // === SPECULAR (subtle, cel-shaded) ===
-      vec3 halfDir = normalize(lightDir + viewDir);
+      vec3 halfDir = normalize(keyLightDir + viewDir);
       float NdotH = max(dot(normal, halfDir), 0.0);
       float specular = pow(NdotH, uSpecularPower);
-      // Sharp cutoff for anime specular
       specular = smoothstep(0.4, 0.6, specular) * uSpecularStrength;
 
-      // === RIM LIGHTING ===
+      // === RIM LIGHTING (shader-based) ===
       float NdotV = max(dot(normal, viewDir), 0.0);
       float rim = 1.0 - NdotV;
       rim = pow(rim, uRimPower) * uRimStrength;
-      // Appear more on lit areas
       rim *= shadowMask * 0.7 + 0.3;
 
       // === FINAL COMPOSITION ===
-      vec3 finalColor = diffuse * lightColor;
-      finalColor += specular * lightColor * 0.5;
+      vec3 finalColor = diffuse * keyLightColor;
+      finalColor += fillContribution;
+      finalColor += ambientContribution;
+      finalColor += backRimContribution;
+      finalColor += specular * keyLightColor * 0.5;
       finalColor += uRimColor * rim * 0.25;
 
       // Preserve color saturation

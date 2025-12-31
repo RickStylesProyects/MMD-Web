@@ -53,7 +53,7 @@ export function SettingsPanel() {
                 <input 
                   type="range" 
                   min="0" 
-                  max="3" 
+                  max="5" 
                   step="0.1"
                   value={lightSettings.keyIntensity}
                   onChange={(e) => setLightSettings({ keyIntensity: parseFloat(e.target.value) })}
@@ -75,12 +75,12 @@ export function SettingsPanel() {
                 <input 
                   type="range" 
                   min="0" 
-                  max="1" 
-                  step="0.05"
+                  max="3" 
+                  step="0.1"
                   value={lightSettings.fillIntensity}
                   onChange={(e) => setLightSettings({ fillIntensity: parseFloat(e.target.value) })}
                 />
-                <span>{lightSettings.fillIntensity.toFixed(2)}</span>
+                <span>{lightSettings.fillIntensity.toFixed(1)}</span>
               </div>
               <div className="setting-row">
                 <label>Color</label>
@@ -97,12 +97,12 @@ export function SettingsPanel() {
                 <input 
                   type="range" 
                   min="0" 
-                  max="1" 
-                  step="0.05"
+                  max="3" 
+                  step="0.1"
                   value={lightSettings.ambientIntensity}
                   onChange={(e) => setLightSettings({ ambientIntensity: parseFloat(e.target.value) })}
                 />
-                <span>{lightSettings.ambientIntensity.toFixed(2)}</span>
+                <span>{lightSettings.ambientIntensity.toFixed(1)}</span>
               </div>
               <div className="setting-row">
                 <label>Color</label>
@@ -119,12 +119,12 @@ export function SettingsPanel() {
                 <input 
                   type="range" 
                   min="0" 
-                  max="1" 
-                  step="0.05"
+                  max="3" 
+                  step="0.1"
                   value={lightSettings.rimIntensity}
                   onChange={(e) => setLightSettings({ rimIntensity: parseFloat(e.target.value) })}
                 />
-                <span>{lightSettings.rimIntensity.toFixed(2)}</span>
+                <span>{lightSettings.rimIntensity.toFixed(1)}</span>
               </div>
             </div>
           )}
@@ -138,7 +138,7 @@ export function SettingsPanel() {
                 <input 
                   type="range" 
                   min="0" 
-                  max="1" 
+                  max="1.5" 
                   step="0.05"
                   value={shaderSettings.shadowDarkness}
                   onChange={(e) => setShaderSettings({ shadowDarkness: parseFloat(e.target.value) })}
@@ -162,7 +162,7 @@ export function SettingsPanel() {
                 <input 
                   type="range" 
                   min="0" 
-                  max="0.3" 
+                  max="0.5" 
                   step="0.01"
                   value={shaderSettings.shadowSoftness}
                   onChange={(e) => setShaderSettings({ shadowSoftness: parseFloat(e.target.value) })}
@@ -176,7 +176,7 @@ export function SettingsPanel() {
                 <input 
                   type="range" 
                   min="0" 
-                  max="2" 
+                  max="3" 
                   step="0.1"
                   value={shaderSettings.rimStrength}
                   onChange={(e) => setShaderSettings({ rimStrength: parseFloat(e.target.value) })}
@@ -188,7 +188,7 @@ export function SettingsPanel() {
                 <input 
                   type="range" 
                   min="0" 
-                  max="1" 
+                  max="2" 
                   step="0.05"
                   value={shaderSettings.specularStrength}
                   onChange={(e) => setShaderSettings({ specularStrength: parseFloat(e.target.value) })}
@@ -200,7 +200,7 @@ export function SettingsPanel() {
                 <input 
                   type="range" 
                   min="0" 
-                  max="0.1" 
+                  max="0.15" 
                   step="0.005"
                   value={shaderSettings.outlineThickness}
                   onChange={(e) => setShaderSettings({ outlineThickness: parseFloat(e.target.value) })}

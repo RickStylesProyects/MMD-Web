@@ -27,7 +27,8 @@ export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
     animationState, 
     setCurrentTime, 
     setDuration,
-    shaderSettings 
+    shaderSettings,
+    lightSettings
   } = useStore();
   
   // Refs
@@ -318,11 +319,18 @@ export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
           const materials = Array.isArray(m.material) ? m.material : [m.material];
           materials.forEach((mat) => {
             if (mat instanceof ShaderMaterial && mat.userData?.isGenshin) {
+              // Shader Settings
               mat.uniforms.uShadowDarkness.value = shaderSettings.shadowDarkness;
               mat.uniforms.uShadowThreshold.value = shaderSettings.shadowThreshold;
               mat.uniforms.uShadowSoftness.value = shaderSettings.shadowSoftness;
               mat.uniforms.uRimStrength.value = shaderSettings.rimStrength;
               mat.uniforms.uSpecularStrength.value = shaderSettings.specularStrength;
+              
+              // Light Settings
+              if (mat.uniforms.uKeyLightIntensity) mat.uniforms.uKeyLightIntensity.value = lightSettings.keyIntensity;
+              if (mat.uniforms.uFillLightIntensity) mat.uniforms.uFillLightIntensity.value = lightSettings.fillIntensity;
+              if (mat.uniforms.uAmbientIntensity) mat.uniforms.uAmbientIntensity.value = lightSettings.ambientIntensity;
+              if (mat.uniforms.uRimLightIntensity) mat.uniforms.uRimLightIntensity.value = lightSettings.rimIntensity;
             }
           });
         }

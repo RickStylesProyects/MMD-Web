@@ -23,6 +23,7 @@ export function ModelManager() {
     stages,
     activeStageId,
     addStage,
+    addStageFromUrl,
     removeStage,
     setActiveStage
   } = useStore();
@@ -285,6 +286,16 @@ export function ModelManager() {
                 onChange={handleStageUpload}
               />
             </label>
+            
+            {/* Demo Stage Button */}
+            <button
+              onClick={() => addStageFromUrl('Mondstadt Stage', '/stages/Mondstadt/MondstadtCity_LowerPart1.pmx')}
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-green-500/20 hover:bg-green-500/30 rounded-lg text-xs text-green-300 transition-colors border border-green-500/30"
+              title="Load Mondstadt demo stage"
+            >
+              <FolderOpen className="w-4 h-4" />
+              Demo: Mondstadt
+            </button>
           </div>
 
           {/* Stage List */}
