@@ -25,12 +25,16 @@ export function ModelManager() {
     addStage,
     addStageFromUrl,
     removeStage,
-    setActiveStage
+    setActiveStage,
+    // Audio actions
+    setAudio,
+    removeAudio,
+    audioState
   } = useStore();
 
   const [urlInput, setUrlInput] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
-  const [activeSection, setActiveSection] = useState<'models' | 'stages'>('models');
+  const [activeSection, setActiveSection] = useState<'models' | 'stages' | 'audio'>('models');
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -41,6 +45,12 @@ export function ModelManager() {
   const handleStageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       addStage(e.target.files[0]);
+    }
+  };
+  
+  const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setAudio(e.target.files[0]);
     }
   };
 
@@ -92,6 +102,18 @@ export function ModelManager() {
           <MapPin className="w-4 h-4" />
           Stages
         </button>
+        <button
+          onClick={() => setActiveSection('audio')}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm transition-colors",
+            activeSection === 'audio' 
+              ? "bg-indigo-500 text-white" 
+              : "bg-white/5 text-gray-400 hover:bg-white/10"
+          )}
+        >
+          <Music className="w-4 h-4" />
+          Audio
+        </button>
       </div>
 
       {/* Background Controls */}
@@ -141,18 +163,40 @@ export function ModelManager() {
         <>
           {/* Model Upload */}
           <div className="mb-4 space-y-2">
-            <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-white/20 rounded-lg cursor-pointer hover:border-indigo-500 hover:bg-white/5 transition-colors">
-              <div className="flex flex-col items-center justify-center py-3">
-                <Upload className="w-6 h-6 mb-1 text-indigo-400" />
-                <p className="text-xs text-gray-400">Upload .pmx file</p>
-              </div>
-              <input 
-                type="file" 
-                className="hidden" 
-                accept=".pmx"
-                onChange={handleFileUpload}
-              />
-            </label>
+            {window.electron ? (
+              <button 
+                onClick={async () => {
+                  if (window.electron) {
+                    const result = await window.electron.openDirectory();
+                    if (result && result.pmxFiles.length > 0) {
+                      const pmxFile = result.pmxFiles[0];
+                      // Construct file URL
+                      const fullPath = `file://${result.path}/${pmxFile}`.replace(/\\/g, '/');
+                      addModelFromUrl(result.name, fullPath);
+                    }
+                  }
+                }}
+                className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-white/20 rounded-lg cursor-pointer hover:border-indigo-500 hover:bg-white/5 transition-colors"
+              >
+                <div className="flex flex-col items-center justify-center py-3">
+                  <FolderOpen className="w-6 h-6 mb-1 text-indigo-400" />
+                  <p className="text-xs text-gray-400">Open Model Folder</p>
+                </div>
+              </button>
+            ) : (
+              <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-white/20 rounded-lg cursor-pointer hover:border-indigo-500 hover:bg-white/5 transition-colors">
+                <div className="flex flex-col items-center justify-center py-3">
+                  <Upload className="w-6 h-6 mb-1 text-indigo-400" />
+                  <p className="text-xs text-gray-400">Upload .pmx file</p>
+                </div>
+                <input 
+                  type="file" 
+                  className="hidden" 
+                  accept=".pmx,.pmd"
+                  onChange={handleFileUpload}
+                />
+              </label>
+            )}
 
             {/* URL Input Toggle */}
             <div className="flex gap-2">
@@ -351,6 +395,51 @@ export function ModelManager() {
             )}
           </div>
         </>
+      )}
+
+      {/* ============ AUDIO SECTION ============ */}
+      {activeSection === 'audio' && (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-white/20 rounded-lg cursor-pointer hover:border-indigo-500 hover:bg-white/5 transition-colors">
+              <div className="flex flex-col items-center justify-center py-3">
+                <Music className="w-6 h-6 mb-1 text-indigo-400" />
+                <p className="text-xs text-gray-400">Upload Music (.mp3/wav)</p>
+              </div>
+              <input 
+                type="file" 
+                className="hidden" 
+                accept=".mp3,.wav,.ogg"
+                onChange={handleAudioUpload}
+              />
+            </label>
+
+            {audioState.url ? (
+              <div className="p-3 bg-white/5 rounded-lg border border-white/10 flex items-center justify-between animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-3 truncate">
+                   <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                     <Music className="w-4 h-4 text-indigo-400" />
+                   </div>
+                   <div className="flex flex-col truncate">
+                     <span className="text-sm font-medium truncate">{audioState.file?.name || 'Audio Loaded'}</span>
+                     <span className="text-xs text-green-400">Ready to play</span>
+                   </div>
+                </div>
+                <button 
+                  onClick={removeAudio} 
+                  className="p-1.5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded-md transition-colors"
+                  title="Remove audio"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+               <div className="text-center text-gray-500 py-4 text-sm border border-dashed border-white/5 rounded-lg">
+                  No audio loaded.<br/>Music will sync with animation timeline.
+               </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

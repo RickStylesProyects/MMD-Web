@@ -4,10 +4,13 @@ import { AmmoProvider } from './components/AmmoProvider';
 import { SettingsPanel } from './components/SettingsPanel';
 import { AnimationPlayer } from './components/AnimationPlayer';
 
+import { AudioController } from './components/AudioController';
+
 function App() {
   return (
     <div className="w-full h-screen relative overflow-hidden bg-black">
       <AmmoProvider>
+        <AudioController />
         {/* Left Panel - Models & Stages */}
         <ModelManager />
         
@@ -25,7 +28,7 @@ function App() {
       
       {/* Footer / Overlay Info */}
       <div className="absolute bottom-4 right-4 text-white/30 text-xs pointer-events-none">
-        MMD Web App - v0.2.0
+        MMD Studio - v0.3.0 (Electron Ready)
       </div>
     </div>
   );

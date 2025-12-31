@@ -193,10 +193,18 @@ export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
       // Use MMDAnimationHelper to handle animation + physics together
       if (helperRef.current) {
         try {
-          // Remove mesh if already added
+          // Remove mesh if already added to clean up previous animation/physics
           try {
+            // Stop any playing actions on the mesh's mixer if it exists
+            const existingMixer = (helperRef.current as any).objects?.get(targetMesh)?.mixer;
+            if (existingMixer) {
+              existingMixer.stopAllAction();
+              existingMixer.uncacheRoot(targetMesh);
+            }
             helperRef.current.remove(targetMesh);
-          } catch (e) {}
+          } catch (e) {
+            console.warn("Cleanup warning:", e);
+          }
           
           // Add mesh with animation and physics
           helperRef.current.add(targetMesh, {
