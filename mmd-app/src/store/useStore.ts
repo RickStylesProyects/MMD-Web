@@ -17,12 +17,15 @@ export interface MMDModel {
   // Morphs
   activeMorphs?: Record<string, number>;
   availableMorphs?: string[];
-
   isLocalUrl?: boolean;
   position: [number, number, number];
   rotation: [number, number, number];
   scale: number;
   visible: boolean;
+}
+
+export interface UIState {
+  activeMorphPanelModelId: string | null;
 }
 
 export interface Stage {
@@ -74,6 +77,7 @@ export interface MMDStore {
   // Models
   models: MMDModel[];
   activeModelId: string | null;
+  activeMorphPanelModelId: string | null;
   
   // Stages
   stages: Stage[];
@@ -109,6 +113,7 @@ export interface MMDStore {
   // Morph Actions
   setAvailableMorphs: (modelId: string, morphs: string[]) => void;
   updateModelMorph: (modelId: string, morphName: string, value: number) => void;
+  setActiveMorphPanel: (id: string | null) => void;
 
   // Stage Actions
   addStage: (file: File) => void;
@@ -192,6 +197,7 @@ export const useStore = create<MMDStore>()(
       // Initial state
       models: [],
       activeModelId: null,
+      activeMorphPanelModelId: null,
       stages: [],
       activeStageId: null,
       backgroundColor1: '#1a1a2e',
@@ -482,6 +488,24 @@ export const useStore = create<MMDStore>()(
         audioState: { ...state.audioState, delay }
       })),
 
+      // Morph Actions (New)
+      setAvailableMorphs: (modelId: string, morphs: string[]) => set((state) => ({
+        models: state.models.map(m => m.id === modelId ? { ...m, availableMorphs: morphs } : m)
+      })),
+      
+      updateModelMorph: (modelId: string, morphName: string, value: number) => set((state) => ({
+        models: state.models.map(m => {
+            if (m.id === modelId) {
+                const newActiveMorphs = { ...(m.activeMorphs || {}), [morphName]: value };
+                return { ...m, activeMorphs: newActiveMorphs };
+            }
+            return m;
+        })
+      })),
+
+      setActiveMorphPanel: (id: string | null) => set({ activeMorphPanelModelId: id }),
+
+      // Transform Actions
       updateModelTransform: (id: string, pos?: [number,number,number], rot?: [number,number,number], scale?: number) => set((state) => ({
         models: state.models.map(m => {
           if (m.id !== id) return m;

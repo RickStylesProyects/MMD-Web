@@ -7,6 +7,7 @@ import { AnimationPlayer } from './components/AnimationPlayer';
 import { AudioController } from './components/AudioController';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { MorphPanel } from './components/MorphPanel';
 
 function App() {
   return (
@@ -19,6 +20,9 @@ function App() {
           
           {/* Right Panel - Settings */}
           <SettingsPanel />
+
+          {/* Morph Panel (Floating) */}
+          <MorphPanel />
           
           {/* 3D Scene */}
           <div className="w-full h-full">

@@ -11,7 +11,8 @@ import {  Box,
   Move,
   Layers,
   PlayCircle,
-  MapPin
+  MapPin,
+  Smile
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -46,7 +47,9 @@ export function ModelManager() {
     audioState,
     addMotionToModel, // Kept this as it's used in the new UI
     addMotionFromUrl,
-    updateModelMorph
+    updateModelMorph,
+    setActiveMorphPanel,
+    activeMorphPanelModelId
   } = useStore();
 
   const [expandedTransformId, setExpandedTransformId] = useState<string | null>(null);
@@ -246,6 +249,23 @@ export function ModelManager() {
                   </div>
                   
                   <div className="flex items-center gap-1">
+                    {/* Morph Panel Toggle Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Toggle: if open for this model -> close. Else -> open.
+                        setActiveMorphPanel(activeMorphPanelModelId === model.id ? null : model.id);
+                      }}
+                       className={`p-1.5 rounded-lg transition-colors ${
+                          activeMorphPanelModelId === model.id 
+                            ? 'text-indigo-400 bg-indigo-400/10' 
+                            : 'text-gray-400 hover:text-white hover:bg-white/10'
+                       }`}
+                      title="Facial Morphs"
+                    >
+                      <Smile className="w-4 h-4" />
+                    </button>
+
                     {/* Transform Toggle Button */}
                     <button
                       onClick={(e) => {
@@ -348,7 +368,6 @@ export function ModelManager() {
                         )}
                       </div>
                     </div>
-
                   </div>
                 )}
               </div>
