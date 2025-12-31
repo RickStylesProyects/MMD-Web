@@ -6,7 +6,11 @@ export function SettingsPanel() {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'lighting' | 'shader' | 'camera'>('lighting');
   
-  const { lightSettings, setLightSettings, shaderSettings, setShaderSettings } = useStore();
+  const { 
+    lightSettings, setLightSettings, 
+    shaderSettings, setShaderSettings,
+    models, activeModelId, updateModelTransform 
+  } = useStore();
 
   return (
     <div className={`settings-panel ${isOpen ? 'open' : ''}`}>

@@ -9,9 +9,16 @@ export interface MMDModel {
   name: string;
   url: string;
   file?: File;
-  motionUrl?: string; // Main motion
+  motionUrl?: string; // Currently playing motion
   motionFile?: File;
+  motions: { id: string; name: string; url: string; file?: File; active: boolean }[]; // List of available motions
+  activeMotionId: string | null; // Deprecated, but keeping for compatibility if needed temporarily
+
   isLocalUrl?: boolean;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: number;
+  visible: boolean;
 }
 
 export interface Stage {
@@ -56,6 +63,7 @@ export interface AudioState {
   url: string | null;
   duration: number;
   volume: number;
+  delay: number;
 }
 
 export interface MMDStore {
@@ -121,6 +129,10 @@ export interface MMDStore {
   setAudio: (file: File) => void;
   removeAudio: () => void;
   setAudioVolume: (volume: number) => void;
+  setAudioDelay: (delay: number) => void;
+  toggleModelVisibility: (id: string) => void;
+  toggleMotion: (modelId: string, motionId: string) => void;
+  updateModelTransform: (id: string, pos?: [number,number,number], rot?: [number,number,number], scale?: number) => void;
 }
 
 // ============ DEFAULT VALUES ============
@@ -159,6 +171,7 @@ const defaultAudioState: AudioState = {
   url: null,
   duration: 0,
   volume: 0.5,
+  delay: 0,
 };
 
 // ============ STORE ============
@@ -181,13 +194,27 @@ export const useStore = create<MMDStore>()(
       
       // Model Actions
       addModel: (file: File) => {
-        const url = URL.createObjectURL(file);
+        let url = '';
+        if (file.path) {
+          // Electron path - custom protocol for textures
+          // @ts-ignore
+          url = 'file://' + file.path.replace(/\\/g, '/');
+        } else {
+          url = URL.createObjectURL(file);
+        }
+
         const newModel: MMDModel = {
           id: uuidv4(),
           name: file.name,
           url,
           file,
           isLocalUrl: false,
+          position: [0, 0, 0],
+          rotation: [0, 0, 0],
+          scale: 1,
+          visible: true,
+          motions: [],
+          activeMotionId: null,
         };
         set((state) => ({ 
           models: [...state.models, newModel],
@@ -201,6 +228,12 @@ export const useStore = create<MMDStore>()(
           name,
           url,
           isLocalUrl: true,
+          position: [0, 0, 0],
+          rotation: [0, 0, 0],
+          scale: 1,
+          visible: true,
+          motions: [],
+          activeMotionId: null,
         };
         set((state) => ({ 
           models: [...state.models, newModel],
@@ -230,16 +263,27 @@ export const useStore = create<MMDStore>()(
       setActiveModel: (id: string) => set({ activeModelId: id }),
       
       addMotionToModel: (modelId: string, file: File) => {
-        const motionUrl = URL.createObjectURL(file);
+        let motionUrl = '';
+        // @ts-ignore
+        if (file.path) {
+           // @ts-ignore
+           motionUrl = 'file://' + file.path.replace(/\\/g, '/');
+        } else {
+           motionUrl = URL.createObjectURL(file);
+        }
+        
+        const newMotion = { id: uuidv4(), name: file.name, url: motionUrl, file, active: true };
+        
         set((state) => ({
           models: state.models.map((m) => {
-            // Cleanup previous motion URL
-            if (m.id === modelId && m.motionUrl) {
-              URL.revokeObjectURL(m.motionUrl);
+            if (m.id === modelId) {
+              return { 
+                ...m, 
+                motions: [...(m.motions || []), newMotion],
+                activeMotionId: newMotion.id, // Still set for UI highlight logic initially
+              };
             }
-            return m.id === modelId 
-              ? { ...m, motionUrl, motionFile: file }
-              : m;
+            return m;
           }),
           animationState: { ...state.animationState, isPlaying: true, currentTime: 0 }
         }));
@@ -260,7 +304,14 @@ export const useStore = create<MMDStore>()(
       
       // Stage Actions
       addStage: (file: File) => {
-        const url = URL.createObjectURL(file);
+        let url = '';
+        // @ts-ignore
+        if (file.path) {
+           // @ts-ignore
+           url = 'file://' + file.path.replace(/\\/g, '/');
+        } else {
+           url = URL.createObjectURL(file);
+        }
         const newStage: Stage = {
           id: uuidv4(),
           name: file.name,
@@ -371,6 +422,41 @@ export const useStore = create<MMDStore>()(
 
       setAudioVolume: (volume: number) => set((state) => ({
         audioState: { ...state.audioState, volume }
+      })),
+
+      setAudioDelay: (delay: number) => set((state) => ({
+        audioState: { ...state.audioState, delay }
+      })),
+
+      updateModelTransform: (id: string, pos?: [number,number,number], rot?: [number,number,number], scale?: number) => set((state) => ({
+        models: state.models.map(m => {
+          if (m.id !== id) return m;
+          return {
+            ...m,
+            position: pos ?? m.position,
+            rotation: rot ?? m.rotation,
+            scale: scale ?? m.scale
+          };
+        })
+      })),
+
+      toggleModelVisibility: (id: string) => set((state) => ({
+        models: state.models.map(m => m.id === id ? { ...m, visible: !m.visible } : m)
+      })),
+
+      toggleMotion: (modelId: string, motionId: string) => set((state) => ({
+        models: state.models.map(m => {
+          if (m.id === modelId) {
+            return {
+              ...m,
+              motions: m.motions.map(mot => 
+                mot.id === motionId ? { ...mot, active: !mot.active } : mot
+              )
+            };
+          }
+          return m;
+        }),
+        // Don't reset time on toggle, allow blending/adding dynamically
       })),
     }),
     {

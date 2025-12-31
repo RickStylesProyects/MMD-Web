@@ -101,10 +101,14 @@ function SceneContent() {
         cellSize={0.5}
       />
 
-      {/* Camera Controls - target at model center */}
+      {/* Camera Controls - target at active model center or origin */}
       <OrbitControls 
         makeDefault 
-        target={[0, 0.8, 0]} 
+        target={[
+          activeModel ? activeModel.position[0] : 0, 
+          activeModel ? activeModel.position[1] + 0.8 : 0.8, 
+          activeModel ? activeModel.position[2] : 0
+        ]} 
         minDistance={1}
         maxDistance={100}
         enablePan={true}
@@ -122,15 +126,19 @@ function SceneContent() {
         )}
       </Suspense>
 
-      {/* Model */}
+      {/* Models - Render all loaded models */}
       <Suspense fallback={<LoadingFallback />}>
-        {activeModel && (
+        {models.map((model) => (
           <MMDCharacter 
-            url={activeModel.url} 
-            motionUrl={activeModel.motionUrl}
-            key={activeModel.id} 
+            key={model.id}
+            url={model.url} 
+            motions={model.motions || []}
+            position={model.position}
+            rotation={model.rotation}
+            scale={model.scale}
+            isActive={model.id === activeModelId}
           />
-        )}
+        ))}
       </Suspense>
     </>
   );

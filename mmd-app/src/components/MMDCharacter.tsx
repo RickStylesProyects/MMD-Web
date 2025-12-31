@@ -15,10 +15,23 @@ const animationCache = new Map<string, AnimationClip>();
 
 interface MMDCharacterProps {
   url: string;
-  motionUrl?: string;
+  motionUrl?: string; // Legacy
+  motions?: { id: string; name: string; url: string; active: boolean }[];
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+  scale?: number;
+  isActive?: boolean;
 }
 
-export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
+export function MMDCharacter({ 
+  url, 
+  motionUrl,
+  motions = [],
+  position = [0, 0, 0],
+  rotation = [0, 0, 0],
+  scale = 1,
+  isActive = false
+}: MMDCharacterProps) {
   const { scene } = useThree();
   const { hasPhysics } = useAmmo();
   
@@ -27,6 +40,7 @@ export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
     animationState, 
     setCurrentTime, 
     setDuration,
+    setPlaying,
     shaderSettings,
     lightSettings
   } = useStore();
@@ -97,6 +111,38 @@ export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
     
     const loader = loaderRef.current;
     
+    const initializeHelper = (loadedMesh: THREE.SkinnedMesh) => {
+      // Create MMDAnimationHelper - this handles both animation and physics
+      if (hasPhysics && window.Ammo) {
+        try {
+          const helper = new MMDAnimationHelper({ 
+            afterglow: 2.0,
+            resetPhysicsOnLoop: true 
+          });
+          
+          // Initialize with physics ONLY
+          // We omit 'animation' param to let helper default safely
+          try {
+             helper.add(loadedMesh, { 
+               physics: true 
+             });
+             console.log("✅ MMD Physics initialized");
+          } catch (physicsError) {
+             console.error("❌ Physics init failed:", physicsError);
+             console.warn("⚠️ Attempting Safe Mode (No Physics) due to critical error.");
+             helper.add(loadedMesh, { physics: false });
+          }
+          
+          helperRef.current = helper;
+          console.log("✅ MMD Animation Helper ready");
+        } catch (e) {
+          console.error("⚠️ Helper creation failed, using standalone mixer:", e);
+        }
+      } else {
+        // Fallback for no physics
+      }
+    };
+
     // Check cache first
     if (modelCache.has(url)) {
       console.log("📦 Using cached model:", url);
@@ -108,22 +154,6 @@ export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
       setIsLoading(false);
       return;
     }
-    
-    const initializeHelper = (loadedMesh: THREE.SkinnedMesh) => {
-      // Create MMDAnimationHelper - this handles both animation and physics
-      if (hasPhysics && window.Ammo) {
-        try {
-          const helper = new MMDAnimationHelper({ 
-            afterglow: 2.0,
-            resetPhysicsOnLoop: true 
-          });
-          helperRef.current = helper;
-          console.log("✅ MMD Animation Helper created");
-        } catch (e) {
-          console.warn("⚠️ Failed to create animation helper:", e);
-        }
-      }
-    };
     
     // Modify URL for blob handling
     const modifiedUrl = url.startsWith('blob:') ? url + '#.pmx' : url;
@@ -172,90 +202,116 @@ export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
     };
   }, [url, hasPhysics, applyGenshinShader]);
   
-  // Load VMD animation - use MMDAnimationHelper properly
+  // =========================================================
+  // MULTI-TRACK MOTION HANDLING (Blending)
+  // =========================================================
+  
+  const [loadedClips, setLoadedClips] = useState(new Map<string, AnimationClip>());
+  
+  // 1. Load active motions
   useEffect(() => {
-    if (!motionUrl || !meshRef.current) return;
+    if (!mesh || !motions) return;
     
-    const mesh = meshRef.current;
-    const loader = loaderRef.current;
+    motions.forEach(bgMotion => {
+      // Check if already loaded
+      if (loadedClips.has(bgMotion.url) || animationCache.has(bgMotion.url)) return;
+      
+      console.log("⬇️ Loading motion:", bgMotion.name);
+      
+      // Use loaderRef to load
+      loaderRef.current.loadAnimation(
+        bgMotion.url,
+        mesh, // Bind to current mesh
+        (clip) => {
+           console.log("✅ Motion loaded:", bgMotion.name);
+           // Cache it
+           if (!bgMotion.url.startsWith('blob:')) {
+             animationCache.set(bgMotion.url, clip);
+           }
+           setLoadedClips(prev => new Map(prev).set(bgMotion.url, clip));
+        },
+        undefined,
+        (err) => console.error("❌ Failed to load motion:", bgMotion.name, err)
+      );
+    });
+  }, [motions, mesh, loadedClips]);
+  
+  // 2. Sync Mixer (Play/Stop/Blend)
+  useEffect(() => {
+    if (!mesh) return;
     
-    // Check animation cache
-    if (animationCache.has(motionUrl)) {
-      console.log("📦 Using cached animation:", motionUrl);
-      const cachedClip = animationCache.get(motionUrl)!;
-      applyAnimation(mesh, cachedClip);
-      return;
+    // Get Mixer from Helper
+    let mixer: AnimationMixer | null = null;
+    
+    if (helperRef.current) {
+      try {
+        const objects = (helperRef.current as any).objects;
+        mixer = objects.get(mesh)?.mixer;
+        
+        // If mixer not found (maybe physics init failed?), try add again?
+        if (!mixer) {
+           // Fallback: This shouldn't happen if initHelper worked
+           console.warn("Mixer missing from helper, attempting re-add");
+           helperRef.current.add(mesh, { physics: hasPhysics });
+           mixer = objects.get(mesh)?.mixer;
+        }
+      } catch (e) {
+        console.error("Error accessing helper mixer:", e);
+      }
     }
     
-    console.log("Loading VMD animation:", motionUrl);
+    // Fallback mixer if no helper (no physics)
+    if (!mixer) {
+       if (!(mesh as any)._fallbackMixer) {
+          (mesh as any)._fallbackMixer = new AnimationMixer(mesh);
+       }
+       mixer = (mesh as any)._fallbackMixer;
+    }
     
-    const applyAnimation = (targetMesh: THREE.SkinnedMesh, clip: AnimationClip) => {
-      // Use MMDAnimationHelper to handle animation + physics together
-      if (helperRef.current) {
-        try {
-          // Remove mesh if already added to clean up previous animation/physics
-          try {
-            // Stop any playing actions on the mesh's mixer if it exists
-            const existingMixer = (helperRef.current as any).objects?.get(targetMesh)?.mixer;
-            if (existingMixer) {
-              existingMixer.stopAllAction();
-              existingMixer.uncacheRoot(targetMesh);
-            }
-            helperRef.current.remove(targetMesh);
-          } catch (e) {
-            console.warn("Cleanup warning:", e);
-          }
-          
-          // Add mesh with animation and physics
-          helperRef.current.add(targetMesh, {
-            animation: clip,
-            physics: hasPhysics && !!window.Ammo
-          });
-          
-          
-          setAnimationLoaded(true);
-          setDuration(clip.duration);
-          console.log("✅ Animation applied via MMDAnimationHelper, duration:", clip.duration);
-        } catch (e) {
-          console.error("Failed to apply animation:", e);
-          // Fallback to simple mixer
-          const mixer = new AnimationMixer(targetMesh);
-          const action = mixer.clipAction(clip);
-          action.play();
-          (targetMesh as any)._fallbackMixer = mixer;
-          setAnimationLoaded(true);
-        }
-      } else {
-        // No helper, use simple mixer
-        const mixer = new AnimationMixer(targetMesh);
-        const action = mixer.clipAction(clip);
-        action.play();
-        (targetMesh as any)._fallbackMixer = mixer;
-        setAnimationLoaded(true);
-        console.log("✅ Animation applied via fallback mixer");
-      }
-    };
+    if (!mixer) return;
     
-    // Load animation with the mesh for proper bone mapping
-    loader.loadAnimation(
-      motionUrl,
-      mesh,
-      (clip: AnimationClip) => {
-        // Cache animation
-        if (!motionUrl.startsWith('blob:')) {
-          animationCache.set(motionUrl, clip);
-          console.log("📦 Animation cached:", motionUrl);
-        }
+    // --- BLENDING LOGIC ---
+    let maxDuration = 0;
+    let hasActive = false;
+    
+    // Add manual animation props support (props.motionUrl logic removed)
+    // Only use 'motions' array
+    
+    if (motions && motions.length > 0) {
+      motions.forEach(m => {
+        const clip = loadedClips.get(m.url) || animationCache.get(m.url);
         
-        applyAnimation(mesh, clip);
-      },
-      undefined,
-      (error) => {
-        console.error("❌ Failed to load VMD:", error);
-      }
-    );
+        // Get action
+        if (clip) {
+          const action = mixer!.clipAction(clip);
+          
+          if (m.active) {
+            // PLAY
+            if (!action.isRunning()) {
+              action.reset();
+              action.play();
+              action.fadeIn(0.3); // Smooth blend
+            }
+            action.setEffectiveWeight(1);
+            if (clip.duration > maxDuration) maxDuration = clip.duration;
+            hasActive = true;
+          } else {
+            // STOP (Fade out)
+            if (action.isRunning()) {
+               action.fadeOut(0.3);
+            }
+          }
+        }
+      });
+    }
     
-  }, [motionUrl, hasPhysics, mesh]);
+    if (hasActive) {
+      setDuration(maxDuration);
+      setAnimationLoaded(true);
+      // Don't auto-stop playing here, let global state control that
+    }
+    
+  }, [motions, loadedClips, mesh, hasPhysics, setDuration, setAnimationLoaded]);
   
   // Track last time for scrubbing detection
   const lastTimeRef = useRef(0);
@@ -300,6 +356,15 @@ export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
             if (currentTime >= animationState.duration && animationState.duration > 0) {
               if (animationState.loop) {
                 mixerInfo.mixer.setTime(0);
+                // Reset physics to prevent clothing glitches
+                try {
+                   const physics = (helperRef.current as any).physics;
+                   if (physics && physics.reset) {
+                      physics.reset();
+                   }
+                } catch (e) {
+                   console.warn("Physics reset failed:", e);
+                }
               }
             }
           }
@@ -309,7 +374,12 @@ export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
     
     // Update via helper (handles animation + physics) only if playing
     if (helperRef.current && shouldUpdate) {
-      helperRef.current.update(dt * animationState.playbackSpeed);
+      try {
+         helperRef.current.update(dt * animationState.playbackSpeed);
+      } catch (err) {
+         console.error("💥 Physics Update Crash (Disabling Helper):", err);
+         helperRef.current = null; // Emergency disable to prevent app crash
+      }
     }
     
     // Fallback mixer update
@@ -377,9 +447,13 @@ export function MMDCharacter({ url, motionUrl }: MMDCharacterProps) {
     <primitive 
       object={mesh} 
       dispose={null} 
-      scale={0.1} 
-      position={[0, 0, 0]}
-      rotation={[0, Math.PI, 0]} // Rotate to face camera
+      scale={scale * 0.1} 
+      position={position}
+      rotation={[
+        rotation[0] * (Math.PI / 180), 
+        (rotation[1] + 180) * (Math.PI / 180), 
+        rotation[2] * (Math.PI / 180)
+      ]}
     >
       <Outlines thickness={shaderSettings.outlineThickness} color="#1a1a2e" />
     </primitive>

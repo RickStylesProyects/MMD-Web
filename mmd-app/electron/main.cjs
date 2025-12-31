@@ -3,6 +3,11 @@ const path = require('path');
 const fs = require('fs');
 const url = require('url');
 
+// Registrar esquema como privilegiado para permitir carga de imágenes y recursos seguros
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'local-resource', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
+]);
+
 let mainWindow;
 
 function createWindow() {
@@ -38,15 +43,17 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // Protocolo para cargar archivos locales de forma segura si webSecurity fuera true
-  // protocol.registerFileProtocol('local-resource', (request, callback) => {
-  //   const url = request.url.replace('local-resource://', '');
-  //   try {
-  //     return callback(decodeURIComponent(url));
-  //   } catch (error) {
-  //     console.error(error);
-  //   }
-  // });
+  // Protocolo para cargar archivos locales de forma segura
+  protocol.registerFileProtocol('local-resource', (request, callback) => {
+    const url = request.url.replace('local-resource://', '');
+    try {
+      const decodedUrl = decodeURI(url);
+      // console.log('File Request:', decodedUrl); // Debug log
+      return callback(decodedUrl);
+    } catch (error) {
+      console.error('Protocol Error:', error);
+    }
+  });
 
   createWindow();
 
