@@ -347,9 +347,9 @@ export function SettingsPanel() {
                 <label>Width</label>
                 <input 
                   type="range" 
-                  min="0" 
-                  max="0.15" 
-                  step="0.005"
+                  min={0.0}
+                  max={0.5}
+                  step={0.001}
                   value={shaderSettings?.outlineThickness ?? 0.02}
                   onChange={(e) => setShaderSettings({ outlineThickness: parseFloat(e.target.value) })}
                   disabled={!(shaderSettings?.outlineEnabled ?? true)}

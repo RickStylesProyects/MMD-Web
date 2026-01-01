@@ -36,32 +36,48 @@ export function AmmoProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        // Dynamic import of the npm package
-        const AmmoModule = await import('ammo.js');
-        const Ammo = AmmoModule.default || AmmoModule;
+        console.log("🚀 Loading Custom ammo.wasm.js...");
         
-        if (typeof Ammo === 'function') {
-          // Initialize Ammo and store on window for MMDPhysics
-          // @ts-ignore
-          const ammoInstance = await Ammo();
-          // @ts-ignore
-          window.Ammo = ammoInstance;
-          console.log("✅ Ammo.js loaded and initialized from npm");
-          
-          if (isMounted) {
-            setState({ isLoaded: true, error: null, hasPhysics: true });
+        // Define configuration 
+        // Trying to use 256MB with the new official binary
+        const ammoConfig = {
+          INITIAL_MEMORY: 268435456, // 256MB 
+          locateFile: (url: string) => {
+            if (url.endsWith('.wasm')) return '/libs/ammo.wasm.wasm';
+            return url;
           }
-        } else if (Ammo) {
-          // Already an object
-          // @ts-ignore
-          window.Ammo = Ammo;
-          console.log("✅ Ammo.js loaded from npm (pre-initialized)");
-          
-          if (isMounted) {
-            setState({ isLoaded: true, error: null, hasPhysics: true });
-          }
-        } else {
-          throw new Error("Ammo module is empty");
+        };
+
+        // Inject script manually to control configuration
+        const script = document.createElement('script');
+        script.src = '/libs/ammo.wasm.js';
+        script.async = true;
+
+        await new Promise<void>((resolve, reject) => {
+          script.onload = async () => {
+            // The script defines a global 'Ammo' factory function
+            // @ts-ignore
+            if (typeof window.Ammo === 'function') {
+              try {
+                // @ts-ignore
+                const instance = await window.Ammo(ammoConfig);
+                // @ts-ignore
+                window.Ammo = instance;
+                console.log("✅ Custom Ammo.js (WASM) loaded with 256MB Heap");
+                resolve();
+              } catch (e) {
+                reject(e);
+              }
+            } else {
+              reject(new Error("Ammo factory not found in window"));
+            }
+          };
+          script.onerror = () => reject(new Error("Failed to load ammo.wasm.js script"));
+          document.body.appendChild(script);
+        });
+
+        if (isMounted) {
+          setState({ isLoaded: true, error: null, hasPhysics: true });
         }
       } catch (error) {
         console.warn("⚠️ Failed to load Ammo.js from npm:", error);

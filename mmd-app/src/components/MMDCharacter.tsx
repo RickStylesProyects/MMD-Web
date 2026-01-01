@@ -116,7 +116,7 @@ export function MMDCharacter({
     console.log('🎨 Applying Advanced Shader System v2...');
     
     // Load ramp textures and MatCap
-    const defaultRamp = rampTextureCache.get('skin');
+    const defaultRamp = rampTextureCache.get('toon');
     
     targetMesh.traverse((child) => {
       if ((child as SkinnedMesh).isMesh) {

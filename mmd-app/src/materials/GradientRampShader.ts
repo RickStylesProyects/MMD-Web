@@ -75,8 +75,8 @@ export const GradientRampShader = {
       
       vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
       vViewPosition = -mvPosition.xyz;
-      vWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
-      vec4 worldPosition = vec4(vWorldPosition, 1.0); // Required for shadowmap_vertex
+      vec4 worldPosition = modelMatrix * vec4(transformed, 1.0);
+      vWorldPosition = worldPosition.xyz;
       
       gl_Position = projectionMatrix * mvPosition;
       
