@@ -1,10 +1,15 @@
-import { Suspense } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Suspense, useEffect } from 'react';
+import * as React from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
+import { EffectComposer, Bloom, LUT } from '@react-three/postprocessing';
 import { useStore } from '../store/useStore';
 import { MMDCharacter } from './MMDCharacter';
 import { MMDStage } from './MMDStage';
 import { Environment as Env } from './Environment';
+import { GodraysGroup } from './Godrays';
+import { HeightFogManager } from './HeightFogManager';
+import { lutManager } from '../lib/lutManager';
 import * as THREE from 'three';
 
 function LoadingFallback() {
@@ -18,6 +23,7 @@ function LoadingFallback() {
     </group>
   );
 }
+
 
 // Dynamic lighting component that reads from store
 function DynamicLighting() {
@@ -33,12 +39,13 @@ function DynamicLighting() {
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-camera-far={50}
-        shadow-camera-left={-10}
-        shadow-camera-right={10}
-        shadow-camera-top={10}
-        shadow-camera-bottom={-10}
-        shadow-bias={-0.0001}
+        shadow-camera-far={20}
+        shadow-camera-left={-5}
+        shadow-camera-right={5}
+        shadow-camera-top={5}
+        shadow-camera-bottom={-5}
+        shadow-bias={-0.001}
+        shadow-normalBias={0.05}
       />
       
       {/* Face Light - Soft frontal */}
@@ -89,6 +96,12 @@ function SceneContent() {
 
       {/* Dynamic lighting from store */}
       <DynamicLighting />
+      
+      {/* Height Fog Manager */}
+      <HeightFogManager />
+      
+      {/* Volumetric Godrays */}
+      <GodraysGroup />
 
       {/* Grid Helper (subtle) */}
       <Grid 
@@ -144,7 +157,48 @@ function SceneContent() {
   );
 }
 
+
+// Post-Processing Component
+function PostEffects() {
+  const { postProcessingSettings } = useStore();
+  const [lutTexture, setLutTexture] = React.useState<THREE.Data3DTexture | null>(null);
+  
+  // Load LUT when enabled or preset changes
+  React.useEffect(() => {
+    if (postProcessingSettings.useLUT) {
+      const lut = lutManager.getPreset(postProcessingSettings.lutPreset);
+      setLutTexture(lut);
+    } else {
+      setLutTexture(null);
+    }
+
+  }, [postProcessingSettings.useLUT, postProcessingSettings.lutPreset]);
+
+  if (!postProcessingSettings.bloomEnabled && !postProcessingSettings.useLUT) return null;
+  
+  return (
+    <EffectComposer disableNormalPass>
+      {postProcessingSettings.bloomEnabled && (
+        <Bloom 
+          luminanceThreshold={postProcessingSettings.bloomThreshold} 
+          mipmapBlur 
+          intensity={postProcessingSettings.bloomIntensity}
+          radius={0.8}
+          levels={4}
+        />
+      )}
+      
+      {/* LUT Color Grading */}
+      {postProcessingSettings.useLUT && lutTexture && (
+        <LUT lut={lutTexture} />
+      )}
+    </EffectComposer>
+  );
+}
+
 export function Scene() {
+  const { postProcessingSettings } = useStore();
+
   return (
     <Canvas
       className="w-full h-full"
@@ -154,15 +208,20 @@ export function Scene() {
         antialias: true,
         alpha: false,
         powerPreference: 'high-performance',
-        toneMapping: THREE.ACESFilmicToneMapping,
-        toneMappingExposure: 1.2,
+        toneMapping: THREE.NoToneMapping, // Better for anime/NPR styles
+        toneMappingExposure: postProcessingSettings.tonemappingExposure, 
+        outputColorSpace: THREE.SRGBColorSpace,
+        stencil: true,
+        depth: true
       }}
+      dpr={[1, 2]} // Dynamic pixel ratio
       onCreated={({ gl }) => {
         gl.shadowMap.enabled = true;
         gl.shadowMap.type = THREE.PCFSoftShadowMap;
       }}
     >
       <SceneContent />
+      <PostEffects />
     </Canvas>
   );
 }

@@ -1,0 +1,60 @@
+He analizado el problema del renderizado "blanco" y he preparado un plan para solucionarlo y mejorar la configuración:
+
+Causa del "Blanco": Los valores por defecto de luz ambiental y "Rim Light" (luz de borde) son demasiado altos, y sumados al ToneMapping, queman la imagen. Voy a bajar estos valores por defecto.
+Nuevos Checkboxes: Voy a añadir interruptores (checkboxes) para:
+Rim Light (Encender/Apagar)
+Especular (Brillo en pelo/ropa)
+Outline (Borde negro)
+Plan de Prueba: Usaré el agente para probar cada opción una por una y asegurarme de que no haya crashes.
+¿Te parece bien este plan?
+
+implementation_plan.md
+Open
+Edited
+Task
+Edited
+useStore.ts
++10
+-1
+5
+Edited
+useStore.ts
++6
+-0
+prueba pero recuerda revisar cabios desde el navegador web con la extension de antygravity
+
+Thought for 37s
+
+
+
+
+
+
+Implementing Visual Toggles and Shader Logic
+I am adding the checkboxes for Rim Light, Specular, and Outline to 
+SettingsPanel.tsx
+. Simultaneously, I am updating 
+MMDCharacter.tsx
+ to read these new flags from the store and effectively disable the effects (by setting intensity/thickness to 0) when unchecked. After this, I will run the browser agent for verification.
+
+Files Edited
+MMDCharacter.tsx
+SettingsPanel.tsx
+Task
+Progress Updates
+1
+Updating SettingsPanel and MMDCharacter with new toggles
+
+Refining Visuals and Configuration Stability
+Implemented the visual refinement plan: added checkboxes for Rim, Specular, and Outline in 
+SettingsPanel.tsx
+, and updated 
+MMDCharacter.tsx
+ to respect these toggles (disabling logic and conditionally rendering <Outlines>). Now launching the browser agent to verify that the "white" tint is reduced and that toggling these options works as expected.
+
+Files Edited
+Task
+Progress Updates
+1
+Verifying visual fixes and toggles with browser agent
+

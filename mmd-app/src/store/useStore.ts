@@ -52,9 +52,62 @@ export interface ShaderSettings {
   shadowDarkness: number;
   shadowThreshold: number;
   shadowSoftness: number;
+  
+  rimLightEnabled: boolean;
   rimStrength: number;
+  
+  specularEnabled: boolean;
   specularStrength: number;
+  
+  outlineEnabled: boolean;
   outlineThickness: number;
+  
+  // Face SDF settings
+  useFaceSDF: boolean;
+  faceShadowFeather: number;
+  faceShadowDarkness: number;
+  
+  // Gradient Ramp settings
+  useGradientRamp: boolean;
+  rampTexturePath: string | null;
+  
+  // MatCap settings
+  useMatCap: boolean;
+  matCapStrength: number;
+  matCapTexturePath: string | null;
+  
+  // Hair settings
+  hairSpecularPower: number;
+  hairSpecularStrength: number;
+  hairSpecularShift: number;
+}
+
+export interface PostProcessingSettings {
+  bloomEnabled: boolean;
+  bloomThreshold: number;
+  bloomIntensity: number;
+  bloomSmoothing: number;
+  tonemappingExposure: number;
+  
+  // LUT
+  useLUT: boolean;
+  lutTexturePath: string | null;
+  lutPreset: 'genshin' | 'honkai' | 'classicAnime' | 'vibrant' | 'neutral';
+}
+
+export interface AtmosphericSettings {
+  // Godrays
+  godraysEnabled: boolean;
+  godraysIntensity: number;
+  godraysDecay: number;
+  godraysDensity: number;
+  godraysColor: string;
+  
+  // Height Fog
+  heightFogEnabled: boolean;
+  heightFogColor: string;
+  heightFogDensity: number;
+  heightFogHeightBase: number;
 }
 
 export interface AnimationState {
@@ -92,7 +145,14 @@ export interface MMDStore {
   lightSettings: LightSettings;
   
   // Shader
+  // Shader
   shaderSettings: ShaderSettings;
+
+  // PostProcessing
+  postProcessingSettings: PostProcessingSettings;
+  
+  // Atmospheric
+  atmosphericSettings: AtmosphericSettings;
   
   // Animation Player
   animationState: AnimationState;
@@ -130,7 +190,14 @@ export interface MMDStore {
   setLightSettings: (settings: Partial<LightSettings>) => void;
   
   // Shader Actions
+  // Shader Actions
   setShaderSettings: (settings: Partial<ShaderSettings>) => void;
+
+  // PostProcessing Actions
+  setPostProcessingSettings: (settings: Partial<PostProcessingSettings>) => void;
+  
+  // Atmospheric Actions
+  setAtmosphericSettings: (settings: Partial<AtmosphericSettings>) => void;
   
   // Animation Actions
   setPlaying: (playing: boolean) => void;
@@ -153,12 +220,12 @@ export interface MMDStore {
 // ============ DEFAULT VALUES ============
 
 const defaultLightSettings: LightSettings = {
-  keyIntensity: 1.0,
+  keyIntensity: 0.7, // Lowered for NoToneMapping
   keyColor: '#fff8f0',
   keyPosition: [2, 5, -8],
   fillIntensity: 0.25,
   fillColor: '#c8d8ff',
-  ambientIntensity: 0.3,
+  ambientIntensity: 0.2, // Lowered to prevent washout
   ambientColor: '#8888a0',
   rimIntensity: 0.35,
   rimColor: '#ffeedd',
@@ -168,9 +235,61 @@ const defaultShaderSettings: ShaderSettings = {
   shadowDarkness: 0.35,
   shadowThreshold: 0.45,
   shadowSoftness: 0.08,
-  rimStrength: 0.8,
+  
+  // Rim Light
+  rimLightEnabled: true,
+  rimStrength: 0.4, 
+  
+  // Specular
+  specularEnabled: true,
   specularStrength: 0.3,
-  outlineThickness: 0.02,
+  
+  // Outline
+  outlineEnabled: false, // Disabled due to SkinnedMesh incompatibility
+  outlineThickness: 0.002,
+  
+  // Face SDF
+  useFaceSDF: true, // Auto-detect if texture available
+  faceShadowFeather: 0.05,
+  faceShadowDarkness: 0.4,
+  
+  // Gradient Ramps
+  useGradientRamp: true, // Enable by default for Anime look
+  rampTexturePath: null,
+  
+  // MatCaps
+  useMatCap: false,
+  matCapStrength: 0.5,
+  matCapTexturePath: null,
+  
+  // Hair
+  hairSpecularPower: 32.0,
+  hairSpecularStrength: 0.6,
+  hairSpecularShift: 0.1,
+};
+
+const defaultPostProcessingSettings: PostProcessingSettings = {
+  bloomEnabled: true,
+  bloomThreshold: 1.0, // High threshold for selective bloom (Guide Section 8.1)
+  bloomIntensity: 0.5,
+  bloomSmoothing: 0.02,
+  tonemappingExposure: 1.0,
+  useLUT: false,
+  lutTexturePath: null,
+  lutPreset: 'genshin',
+};
+
+const defaultAtmosphericSettings: AtmosphericSettings = {
+  godraysEnabled: false,
+  godraysIntensity: 0.6,
+  godraysDecay: 0.9,
+  godraysDensity: 0.96,
+  godraysColor: '#fff8e0',
+  
+  heightFogEnabled: false,
+  heightFogColor: '#1a1a2e',
+  heightFogDensity: 0.02,
+  heightFogHeightBase: -5.0,
 };
 
 const defaultAnimationState: AnimationState = {
@@ -205,6 +324,8 @@ export const useStore = create<MMDStore>()(
       backgroundAnimated: true,
       lightSettings: defaultLightSettings,
       shaderSettings: defaultShaderSettings,
+      postProcessingSettings: defaultPostProcessingSettings,
+      atmosphericSettings: defaultAtmosphericSettings,
       animationState: defaultAnimationState,
       audioState: defaultAudioState,
       
@@ -348,20 +469,7 @@ export const useStore = create<MMDStore>()(
         }));
       },
 
-      setAvailableMorphs: (modelId: string, morphs: string[]) => set((state) => ({
-        models: state.models.map(m => m.id === modelId ? { ...m, availableMorphs: morphs } : m)
-      })),
 
-      updateModelMorph: (modelId: string, morphName: string, value: number) => set((state) => ({
-        models: state.models.map(m => {
-          if (m.id === modelId) {
-             const newMorphs = { ...m.activeMorphs, [morphName]: value };
-             return { ...m, activeMorphs: newMorphs };
-          }
-          return m;
-        })
-      })),
-      
       // Stage Actions
       addStage: (file: File) => {
         let url = '';
@@ -429,6 +537,17 @@ export const useStore = create<MMDStore>()(
       setShaderSettings: (settings: Partial<ShaderSettings>) => 
         set((state) => ({ 
           shaderSettings: { ...state.shaderSettings, ...settings } 
+        })),
+
+      setPostProcessingSettings: (settings: Partial<PostProcessingSettings>) =>
+        set((state) => ({
+            postProcessingSettings: { ...state.postProcessingSettings, ...settings }
+        })),
+      
+      // Atmospheric Actions
+      setAtmosphericSettings: (settings: Partial<AtmosphericSettings>) =>
+        set((state) => ({
+          atmosphericSettings: { ...state.atmosphericSettings, ...settings }
         })),
       
       // Animation Actions
@@ -543,6 +662,7 @@ export const useStore = create<MMDStore>()(
         // Only persist settings vs transient data
         lightSettings: state.lightSettings,
         shaderSettings: state.shaderSettings,
+        postProcessingSettings: state.postProcessingSettings,
         backgroundColor1: state.backgroundColor1,
         backgroundColor2: state.backgroundColor2,
         backgroundAnimated: state.backgroundAnimated,

@@ -4,10 +4,15 @@ import { useThree, useFrame } from '@react-three/fiber';
 import { MMDLoader, MMDAnimationHelper, CCDIKSolver } from 'three-stdlib';
 import { SkinnedMesh, ShaderMaterial, UniformsUtils, AnimationMixer, AnimationClip } from 'three';
 import { Outlines } from '@react-three/drei';
-import { GenshinToonShader } from '../materials/GenshinShader';
-import { useAmmo } from './AmmoProvider';
-import { useStore } from '../store/useStore';
 import * as THREE from 'three';
+import { useStore } from '../store/useStore';
+import { rampTextureCache } from '../lib/textureGenerator';
+import { useAmmo } from './AmmoProvider';
+import { GenshinToonShader } from '../materials/GenshinShader';
+import { FaceShadingShader } from '../materials/FaceShadingShader';
+import { HairShader } from '../materials/HairShader';
+import { GradientRampShader } from '../materials/GradientRampShader';
+import { shaderCache } from '../lib/shaderCache';
 
 // Simple model cache
 const modelCache = new Map<string, THREE.SkinnedMesh>();
@@ -65,38 +70,127 @@ export function MMDCharacter({
   const [animationLoaded, setAnimationLoaded] = useState(false);
 
   // Apply custom shader to materials
+  // Material type detection helpers
+  const isFaceMaterial = (mat: any, name: string): boolean => {
+    const lowerName = name.toLowerCase();
+    return (
+      lowerName.includes('face') ||
+      lowerName.includes('顔') ||
+      lowerName.includes('head') ||
+      lowerName.includes('肌')
+    );
+  };
+
+  const isHairMaterial = (mat: any, name: string): boolean => {
+    const lowerName = name.toLowerCase();
+    return (
+      lowerName.includes('hair') ||
+      lowerName.includes('髪') ||
+      lowerName.includes('前髪') ||
+      lowerName.includes('後髪')
+    );
+  };
+
+  // Fallback material for when custom shaders fail
+  const createFallbackMaterial = (oldMat: any): THREE.Material => {
+    console.log('🔄 Creating fallback MeshToonMaterial for:', oldMat.name);
+    
+    const toonMat = new THREE.MeshToonMaterial({
+      color: oldMat.color ? oldMat.color.clone() : new THREE.Color('#ffffff'),
+      map: oldMat.map || null,
+      side: THREE.DoubleSide,
+      transparent: oldMat.transparent || false,
+      alphaTest: oldMat.alphaTest || 0.01,
+    });
+    
+    toonMat.userData = { 
+      isFallbackMaterial: true, 
+      originalName: oldMat.name || 'unknown' 
+    };
+    
+    return toonMat;
+  };
+
+  // Apply shader system to model - WITH FACE SDF, HAIR, RAMP, AND MATCAP SUPPORT
   const applyGenshinShader = useCallback((targetMesh: THREE.SkinnedMesh) => {
+    console.log('🎨 Applying Advanced Shader System v2...');
+    
+    // Load ramp textures and MatCap
+    const defaultRamp = rampTextureCache.get('skin');
+    
     targetMesh.traverse((child) => {
       if ((child as SkinnedMesh).isMesh) {
         const m = child as SkinnedMesh;
         m.castShadow = true;
         m.receiveShadow = true;
 
-        const applyShader = (oldMat: any) => {
-          if (oldMat.userData?.isGenshin) return oldMat;
+        const applyShader = (oldMat: any, index: number) => {
+          // Skip if already processed
+          if (oldMat.userData?.isGenshinShader) return oldMat;
           
-          // CRITICAL FIX: Use `defines` to enable skinning/morph in shaders
-          // In modern Three.js, 'skinning' and 'morphTargets' are NOT material properties
-          // They must be set as shader defines to inject the correct GLSL code.
-          const shaderMat = new ShaderMaterial({
-            uniforms: UniformsUtils.clone(GenshinToonShader.uniforms),
-            vertexShader: GenshinToonShader.vertexShader,
-            fragmentShader: GenshinToonShader.fragmentShader,
-            lights: true,
-            transparent: true,
-            side: THREE.DoubleSide,
-            // CORRECT WAY: Use defines instead of properties
-            defines: {
+          const matName = oldMat.name || `material_${index}`;
+          const isFace = isFaceMaterial(oldMat, matName);
+          const isHair = isHairMaterial(oldMat, matName);
+          
+          console.log(`📦 Processing material: ${matName} | Face: ${isFace} | Hair: ${isHair}`);
+          
+          // Choose shader based on material type
+          let shaderSource;
+          if (isFace) {
+            // Face SDF Shader
+            shaderSource = FaceShadingShader;
+          } else if (isHair) {
+            // Hair Shader with anisotropic specular
+            shaderSource = HairShader;
+          } else {
+            // Body/Cloth shader with ramp and matcap support
+            shaderSource = GradientRampShader;
+          }
+          
+          // Create shader material using cache
+          const shaderMat = shaderCache.get(
+            shaderSource.vertexShader,
+            shaderSource.fragmentShader,
+            shaderSource.uniforms,
+            {
               USE_SKINNING: '',
               USE_MORPHTARGETS: '',
               USE_MORPHNORMALS: ''
             }
-          });
+          );
           
-          // Copy old material texture/color
+          // Crear textura dummy blanca para prevenir errores de WebGL con samplers nulos
+          // Usamos una data texture simple de 1x1 pixel
+          const getWhiteTexture = () => {
+             if (!window._whiteTexture) {
+                 const data = new Uint8Array([255, 255, 255, 255]);
+                 window._whiteTexture = new THREE.DataTexture(data, 1, 1);
+                 window._whiteTexture.needsUpdate = true;
+             }
+             return window._whiteTexture;
+          };
+          const whiteTex = getWhiteTexture();
+
+          // Inicializar texturas con dummy blanco por defecto
+          if (shaderMat.uniforms.uMap) shaderMat.uniforms.uMap.value = whiteTex; 
+          if (shaderMat.uniforms.tFaceSDF) shaderMat.uniforms.tFaceSDF.value = whiteTex;
+          if (shaderMat.uniforms.uRampTexture) shaderMat.uniforms.uRampTexture.value = whiteTex;
+          if (shaderMat.uniforms.uMatCap) shaderMat.uniforms.uMatCap.value = whiteTex;
+
+          // Copy texture and color
           if (oldMat.map) {
             shaderMat.uniforms.uMap.value = oldMat.map;
             shaderMat.uniforms.uHasMap.value = 1.0;
+            
+            // Face SDF texture check
+            if (isFace && oldMat.userData?.faceSDF) {
+              shaderMat.uniforms.tFaceSDF.value = oldMat.userData.faceSDF;
+              shaderMat.uniforms.uHasFaceSDF.value = 1.0;
+              console.log('✅ Face SDF texture loaded');
+            } else if (isFace) {
+              console.log('⚠️ Face material: no SDF, using Lambert fallback');
+              shaderMat.uniforms.uHasFaceSDF.value = 0.0;
+            }
           } else {
             shaderMat.uniforms.uHasMap.value = 0.0;
           }
@@ -104,8 +198,27 @@ export function MMDCharacter({
           if (oldMat.color) {
             shaderMat.uniforms.uColor.value = oldMat.color.clone();
           }
+
+          // CRITICAL: Copy material properties to avoid holes/rendering issues
+          // UNCONDITIONALLY force DoubleSide for ALL MMD materials
+          shaderMat.side = THREE.DoubleSide; 
+          shaderMat.transparent = oldMat.transparent;
+          shaderMat.alphaTest = oldMat.alphaTest || 0.01; // Use original or very low threshold
+          shaderMat.depthWrite = oldMat.depthWrite !== false; // Inherit or default to true
           
-          shaderMat.userData = { isGenshin: true };
+          // Apply gradient ramp (for body/cloth materials)
+          if (!isFace && !isHair && shaderMat.uniforms.uRampTexture) {
+             // IMPORTANTE: Sobrescribir el dummy con el ramp real si corresponde
+             shaderMat.uniforms.uRampTexture.value = defaultRamp || whiteTex;
+             shaderMat.uniforms.uUseRamp.value = shaderSettings.useGradientRamp ? 1.0 : 0.0;
+          }
+          
+          // Mark with metadata
+          shaderMat.userData = { 
+            isGenshinShader: true, 
+            materialType: isFace ? 'face' : (isHair ? 'hair' : 'body'),
+            originalName: matName
+          };
           shaderMat.needsUpdate = true;
           
           return shaderMat;
@@ -113,17 +226,30 @@ export function MMDCharacter({
 
         try {
           if (Array.isArray(m.material)) {
-            m.material = m.material.map(applyShader);
+            m.material = m.material.map((mat, idx) => {
+              try {
+                return applyShader(mat, idx);
+              } catch (shaderErr) {
+                console.warn(`⚠️ Shader failed for material ${idx}, using fallback:`, shaderErr);
+                return createFallbackMaterial(mat);
+              }
+            });
           } else {
-            m.material = applyShader(m.material);
+            try {
+              m.material = applyShader(m.material, 0);
+            } catch (shaderErr) {
+              console.warn('⚠️ Shader failed, using fallback:', shaderErr);
+              m.material = createFallbackMaterial(m.material);
+            }
           }
-          console.log("🎨 Shader applied with Skinning enabled");
+          console.log('✅ Advanced shader system v2 applied');
         } catch (e) {
-          console.error("❌ Shader application failed:", e);
+          console.error('❌ Shader application failed completely:', e);
+          // Final fallback: keep original materials
         }
       }
     });
-  }, []);
+  }, [shaderSettings.useGradientRamp]);
   
   // Load model
   useEffect(() => {
@@ -424,7 +550,7 @@ export function MMDCharacter({
     }
 
        // --- MANUAL MORPH APPLICATION ---
-       if (currentModel && currentModel.activeMorphs && mesh.morphTargetDictionary) {
+       if (currentModel && currentModel.activeMorphs && mesh && mesh.morphTargetDictionary) {
            Object.entries(currentModel.activeMorphs).forEach(([name, value]) => {
                const index = mesh.morphTargetDictionary[name];
                if (index !== undefined) {
@@ -472,27 +598,88 @@ export function MMDCharacter({
        }
     }
 
-    // 3. SHADER UNIFORM UPDATES
+    // 3. SHADER UNIFORM UPDATES + HEAD ORIENTATION FOR FACE SDF
     if (meshRef.current) {
+      // Get head bone for Face SDF orientation tracking
+      let headBone: THREE.Bone | undefined;
+      if (meshRef.current.skeleton) {
+        headBone = meshRef.current.skeleton.bones.find(b => 
+          b.name === '頭' || b.name === 'Head' || b.name === 'head'
+        );
+      }
+      
       meshRef.current.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const m = child as THREE.Mesh;
+          m.castShadow = true;
+          m.receiveShadow = true;
+          
           const materials = Array.isArray(m.material) ? m.material : [m.material];
           
           materials.forEach((mat) => {
-            if (mat instanceof ShaderMaterial && mat.userData?.isGenshin) {
-              // Shader Settings
-              mat.uniforms.uShadowDarkness.value = shaderSettings.shadowDarkness;
-              mat.uniforms.uShadowThreshold.value = shaderSettings.shadowThreshold;
-              mat.uniforms.uShadowSoftness.value = shaderSettings.shadowSoftness;
-              mat.uniforms.uRimStrength.value = shaderSettings.rimStrength;
-              mat.uniforms.uSpecularStrength.value = shaderSettings.specularStrength;
+            // Fix self-shadowing acne by rendering shadows from back faces
+            mat.shadowSide = THREE.BackSide;
+            
+            if (mat instanceof ShaderMaterial && mat.userData?.isGenshinShader) {
+              const materialType = mat.userData.materialType;
               
-              // Light Settings
+              // === COMMON SHADER SETTINGS ===
+              if (mat.uniforms.uShadowDarkness) mat.uniforms.uShadowDarkness.value = shaderSettings.shadowDarkness;
+              if (mat.uniforms.uShadowThreshold) mat.uniforms.uShadowThreshold.value = shaderSettings.shadowThreshold;
+              if (mat.uniforms.uShadowSoftness) mat.uniforms.uShadowSoftness.value = shaderSettings.shadowSoftness;
+              
+              // Apply toggles: if disabled, set strength to 0
+              if (mat.uniforms.uRimStrength) mat.uniforms.uRimStrength.value = shaderSettings.rimLightEnabled ? shaderSettings.rimStrength : 0.0;
+              if (mat.uniforms.uSpecularStrength) mat.uniforms.uSpecularStrength.value = shaderSettings.specularEnabled ? shaderSettings.specularStrength : 0.0;
+              
+              // Update light settings
               if (mat.uniforms.uKeyLightIntensity) mat.uniforms.uKeyLightIntensity.value = lightSettings.keyIntensity;
               if (mat.uniforms.uFillLightIntensity) mat.uniforms.uFillLightIntensity.value = lightSettings.fillIntensity;
               if (mat.uniforms.uAmbientIntensity) mat.uniforms.uAmbientIntensity.value = lightSettings.ambientIntensity;
               if (mat.uniforms.uRimLightIntensity) mat.uniforms.uRimLightIntensity.value = lightSettings.rimIntensity;
+              
+              // === FACE SDF: Update head orientation ===
+              if (materialType === 'face' && headBone && mat.uniforms.uHeadForward) {
+                const worldQuat = new THREE.Quaternion();
+                headBone.getWorldQuaternion(worldQuat);
+                
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(worldQuat);
+                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(worldQuat);
+                
+                mat.uniforms.uHeadForward.value.copy(forward);
+                mat.uniforms.uHeadRight.value.copy(right);
+                
+                if (mat.uniforms.uShadowFeather) {
+                  mat.uniforms.uShadowFeather.value = shaderSettings.faceShadowFeather;
+                }
+                if (mat.uniforms.uShadowDarkness?.value !== undefined) {
+                  mat.uniforms.uShadowDarkness.value = shaderSettings.faceShadowDarkness;
+                }
+              }
+              
+              // === HAIR: Update hair-specific uniforms ===
+              if (materialType === 'hair') {
+                if (mat.uniforms.uHairSpecularPower) {
+                  mat.uniforms.uHairSpecularPower.value = shaderSettings.hairSpecularPower;
+                }
+                if (mat.uniforms.uHairSpecularStrength) {
+                  // Hair specular specific toggle
+                  mat.uniforms.uHairSpecularStrength.value = shaderSettings.specularEnabled ? shaderSettings.hairSpecularStrength : 0.0;
+                }
+                if (mat.uniforms.uHairSpecularShift) {
+                  mat.uniforms.uHairSpecularShift.value = shaderSettings.hairSpecularShift;
+                }
+              }
+              
+              // === BODY/CLOTH: Update ramp and matcap settings ===
+              if (materialType === 'body') {
+                if (mat.uniforms.uUseRamp) {
+                  mat.uniforms.uUseRamp.value = shaderSettings.useGradientRamp ? 1.0 : 0.0;
+                }
+                if (mat.uniforms.uMatCapStrength) {
+                  mat.uniforms.uMatCapStrength.value = shaderSettings.useMatCap ? shaderSettings.matCapStrength : 0.0;
+                }
+              }
             }
           });
         }
@@ -539,7 +726,9 @@ export function MMDCharacter({
         rotation[2] * (Math.PI / 180)
       ]}
     >
-      <Outlines thickness={shaderSettings.outlineThickness} color="#1a1a2e" />
+      {shaderSettings.outlineEnabled && (
+        <Outlines thickness={shaderSettings.outlineThickness} color="#1a1a2e" />
+      )}
     </primitive>
   );
 }

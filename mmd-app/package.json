@@ -15,8 +15,10 @@
     "electron:build": "vite build && electron-builder"
   },
   "dependencies": {
+    "@react-three/postprocessing": "^3.0.4",
     "clsx": "^2.1.1",
     "lucide-react": "^0.562.0",
+    "postprocessing": "^6.38.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwind-merge": "^3.4.0",
