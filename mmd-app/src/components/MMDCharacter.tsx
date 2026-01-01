@@ -532,11 +532,15 @@ export function MMDCharacter({
          try {
            helperRef.current.update(step);
            
-           // Debug log occasionally
+             // Debug log occasionally
            if (!window._helperUpdateLogged) {
              window._helperUpdateLoggedCounters = (window._helperUpdateLoggedCounters || 0) + 1;
              if (window._helperUpdateLoggedCounters % 120 === 0) { // Log every ~2 seconds at 60fps
-                console.log(`⏱️ Loop: MixerTime=${mixerRef.current?.time.toFixed(3)} | ActionRunning=${mixerRef.current?._actions?.[0]?.isRunning()} | Physics=${!!helperRef.current.physics} | IK=${!!ikSolverRef.current}`);
+                // Check physics status on the specific mesh entry
+                const entry = mesh ? helperRef.current.objects.get(mesh) : null;
+                // @ts-ignore
+                const isPhysicsActive = !!entry?.physics;
+                console.log(`⏱️ Loop: MixerTime=${mixerRef.current?.time.toFixed(3)} | ActionRunning=${mixerRef.current?._actions?.[0]?.isRunning()} | Physics=${isPhysicsActive} | IK=${!!ikSolverRef.current}`);
              }
            }
            
