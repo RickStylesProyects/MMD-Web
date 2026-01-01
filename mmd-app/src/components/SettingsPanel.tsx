@@ -188,31 +188,6 @@ export function SettingsPanel() {
                 <span>{(shaderSettings?.shadowSoftness ?? 0.05).toFixed(2)}</span>
               </div>
               
-              <h4>🎭 Face SDF</h4>
-              <div className="setting-row">
-                <label>Feather (Suavidad)</label>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="0.2" 
-                  step="0.01"
-                  value={shaderSettings?.faceShadowFeather ?? 0.05}
-                  onChange={(e) => setShaderSettings({ faceShadowFeather: parseFloat(e.target.value) })}
-                />
-                <span>{(shaderSettings?.faceShadowFeather ?? 0.05).toFixed(2)}</span>
-              </div>
-              <div className="setting-row">
-                <label>Oscuridad Facial</label>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="1" 
-                  step="0.05"
-                  value={shaderSettings?.faceShadowDarkness ?? 0.6}
-                  onChange={(e) => setShaderSettings({ faceShadowDarkness: parseFloat(e.target.value) })}
-                />
-                <span>{(shaderSettings?.faceShadowDarkness ?? 0.6).toFixed(2)}</span>
-              </div>
               
               <h4>💇 Cabello (Hair)</h4>
               <div className="setting-row">
@@ -252,6 +227,7 @@ export function SettingsPanel() {
                 <span>{(shaderSettings?.hairSpecularShift ?? 0).toFixed(2)}</span>
               </div>
               
+{/* 
               <h4>🎨 Gradient Ramps</h4>
               <div className="setting-row">
                 <label>Usar Ramps</label>
@@ -265,7 +241,8 @@ export function SettingsPanel() {
                 <label style={{ fontSize: '0.8em', opacity: 0.7 }}>
                   ℹ️ Ramps: control artístico de sombras
                 </label>
-              </div>
+              </div> 
+              */}
               
               <h4>✨ MatCap (Metales)</h4>
               <div className="setting-row">
@@ -311,6 +288,103 @@ export function SettingsPanel() {
                   disabled={!(shaderSettings?.rimLightEnabled ?? true)}
                 />
                 <span>{(shaderSettings?.rimStrength ?? 0.5).toFixed(1)}</span>
+              </div>
+
+              <div className="setting-row">
+                <label>Rim Power</label>
+                <input 
+                  type="range" 
+                  min="0.1" 
+                  max="10.0" 
+                  step="0.1"
+                  value={shaderSettings?.rimPower ?? 3.0}
+                  onChange={(e) => setShaderSettings({ rimPower: parseFloat(e.target.value) })}
+                  disabled={!(shaderSettings?.rimLightEnabled ?? true)}
+                />
+                <span>{(shaderSettings?.rimPower ?? 3.0).toFixed(1)}</span>
+              </div>
+
+              {/* PROFESSIONAL COLOR GRADING SECTIONS */}
+              <div style={{ borderTop: '1px solid #444', marginTop: '15px', paddingTop: '10px' }}>
+                <h4>🧴 Color Piel (G1)</h4>
+              </div>
+              
+              <div className="setting-row">
+                <label>Saturación</label>
+                <input 
+                  type="range" min="0" max="2" step="0.05"
+                  value={shaderSettings?.skinSaturation ?? 1.0}
+                  onChange={(e) => setShaderSettings({ skinSaturation: parseFloat(e.target.value) })}
+                />
+                <span>{(shaderSettings?.skinSaturation ?? 1.0).toFixed(2)}</span>
+              </div>
+              <div className="setting-row">
+                <label>Temperatura</label>
+                <input 
+                  type="range" min="-1" max="1" step="0.05"
+                  value={shaderSettings?.skinTemperature ?? 0}
+                  onChange={(e) => setShaderSettings({ skinTemperature: parseFloat(e.target.value) })}
+                />
+                <span>{(shaderSettings?.skinTemperature ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="setting-row">
+                <label>Tinte</label>
+                <input 
+                  type="range" min="-1" max="1" step="0.05"
+                  value={shaderSettings?.skinTint ?? 0}
+                  onChange={(e) => setShaderSettings({ skinTint: parseFloat(e.target.value) })}
+                />
+                <span>{(shaderSettings?.skinTint ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="setting-row">
+                <label>Brillo (Exp)</label>
+                <input 
+                  type="range" min="0.5" max="2" step="0.05"
+                  value={shaderSettings?.skinBrightness ?? 1.0}
+                  onChange={(e) => setShaderSettings({ skinBrightness: parseFloat(e.target.value) })}
+                />
+                <span>{(shaderSettings?.skinBrightness ?? 1.0).toFixed(2)}</span>
+              </div>
+
+              <div style={{ borderTop: '1px solid #444', marginTop: '15px', paddingTop: '10px' }}>
+                <h4>👗 Ropa y Pelo (G2)</h4>
+              </div>
+              
+              <div className="setting-row">
+                <label>Saturación</label>
+                <input 
+                  type="range" min="0" max="2" step="0.05"
+                  value={shaderSettings?.clothingSaturation ?? 1.0}
+                  onChange={(e) => setShaderSettings({ clothingSaturation: parseFloat(e.target.value) })}
+                />
+                <span>{(shaderSettings?.clothingSaturation ?? 1.0).toFixed(2)}</span>
+              </div>
+              <div className="setting-row">
+                <label>Temperatura</label>
+                <input 
+                  type="range" min="-1" max="1" step="0.05"
+                  value={shaderSettings?.clothingTemperature ?? 0}
+                  onChange={(e) => setShaderSettings({ clothingTemperature: parseFloat(e.target.value) })}
+                />
+                <span>{(shaderSettings?.clothingTemperature ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="setting-row">
+                <label>Tinte</label>
+                <input 
+                  type="range" min="-1" max="1" step="0.05"
+                  value={shaderSettings?.clothingTint ?? 0}
+                  onChange={(e) => setShaderSettings({ clothingTint: parseFloat(e.target.value) })}
+                />
+                <span>{(shaderSettings?.clothingTint ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="setting-row">
+                <label>Brillo (Exp)</label>
+                <input 
+                  type="range" min="0.5" max="2" step="0.05"
+                  value={shaderSettings?.clothingBrightness ?? 1.0}
+                  onChange={(e) => setShaderSettings({ clothingBrightness: parseFloat(e.target.value) })}
+                />
+                <span>{(shaderSettings?.clothingBrightness ?? 1.0).toFixed(2)}</span>
               </div>
 
               <div className="setting-row">

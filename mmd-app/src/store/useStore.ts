@@ -55,6 +55,7 @@ export interface ShaderSettings {
   
   rimLightEnabled: boolean;
   rimStrength: number;
+  rimPower: number;
   
   specularEnabled: boolean;
   specularStrength: number;
@@ -80,6 +81,18 @@ export interface ShaderSettings {
   hairSpecularPower: number;
   hairSpecularStrength: number;
   hairSpecularShift: number;
+  
+  // Professional Color Grading - Skin (Face + Body)
+  skinSaturation: number;      // 0.0 = grayscale, 1.0 = normal, 2.0 = hyper-saturated
+  skinTemperature: number;     // -1.0 = cool, 0.0 = neutral, 1.0 = warm
+  skinTint: number;            // -1.0 = green, 0.0 = neutral, 1.0 = magenta
+  skinBrightness: number;      // 0.5 = darker, 1.0 = normal, 1.5 = brighter
+  
+  // Professional Color Grading - Clothing + Hair
+  clothingSaturation: number;
+  clothingTemperature: number;
+  clothingTint: number;
+  clothingBrightness: number;
 }
 
 export interface PostProcessingSettings {
@@ -239,6 +252,7 @@ const defaultShaderSettings: ShaderSettings = {
   // Rim Light
   rimLightEnabled: true,
   rimStrength: 0.4, 
+  rimPower: 3.0,
   
   // Specular
   specularEnabled: true,
@@ -266,6 +280,18 @@ const defaultShaderSettings: ShaderSettings = {
   hairSpecularPower: 32.0,
   hairSpecularStrength: 0.6,
   hairSpecularShift: 0.1,
+  
+  // Professional Color Grading - Skin
+  skinSaturation: 1.0,     // Normal saturation
+  skinTemperature: 0.0,    // Neutral temperature
+  skinTint: 0.0,           // Neutral tint
+  skinBrightness: 1.0,     // Normal brightness
+  
+  // Professional Color Grading - Clothing + Hair
+  clothingSaturation: 1.0,
+  clothingTemperature: 0.0,
+  clothingTint: 0.0,
+  clothingBrightness: 1.0,
 };
 
 const defaultPostProcessingSettings: PostProcessingSettings = {

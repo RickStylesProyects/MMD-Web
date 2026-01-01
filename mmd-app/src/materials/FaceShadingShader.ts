@@ -27,6 +27,8 @@ export const FaceShadingShader = {
     
     // Shadow control
     uShadowColor: { value: new THREE.Color('#6a5a8a') },
+    uShadowThreshold: { value: 0.45 },
+    uShadowSoftness: { value: 0.05 },
     uShadowDarkness: { value: 0.4 },
     uShadowFeather: { value: 0.05 },
     
@@ -41,6 +43,12 @@ export const FaceShadingShader = {
     // Light intensity controls
     uKeyLightIntensity: { value: 1.0 },
     uAmbientIntensity: { value: 0.3 },
+    
+    // Professional Color Grading
+    uSaturation: { value: 1.0 },
+    uTemperature: { value: 0.0 },
+    uTint: { value: 0.0 },
+    uBrightness: { value: 1.0 },
   },
   
   vertexShader: `
@@ -96,6 +104,8 @@ export const FaceShadingShader = {
     uniform vec3 uHeadRight;
     
     uniform vec3 uShadowColor;
+    uniform float uShadowThreshold;
+    uniform float uShadowSoftness;
     uniform float uShadowDarkness;
     uniform float uShadowFeather;
     uniform float uUseLambert;
@@ -107,6 +117,12 @@ export const FaceShadingShader = {
     uniform float uKeyLightIntensity;
     uniform float uAmbientIntensity;
     
+    // Professional Color Grading
+    uniform float uSaturation;
+    uniform float uTemperature;
+    uniform float uTint;
+    uniform float uBrightness;
+    
     varying vec2 vUv;
     varying vec3 vNormal;
     varying vec3 vViewPosition;
@@ -116,6 +132,28 @@ export const FaceShadingShader = {
     #include <packing>
     #include <lights_pars_begin>
     #include <shadowmap_pars_fragment>
+    
+    // Color Grading Utilities
+    vec3 applyTemperature(vec3 color, float temp) {
+      // Warm = more red/yellow, Cool = more blue
+      vec3 warm = vec3(1.0, 0.9, 0.7);
+      vec3 cool = vec3(0.7, 0.9, 1.0);
+      vec3 tempShift = mix(cool, warm, temp * 0.5 + 0.5);
+      return color * tempShift;
+    }
+    
+    vec3 applyTint(vec3 color, float tint) {
+      // Green-Magenta axis
+      vec3 green = vec3(0.9, 1.0, 0.9);
+      vec3 magenta = vec3(1.0, 0.9, 1.0);
+      vec3 tintShift = mix(green, magenta, tint * 0.5 + 0.5);
+      return color * tintShift;
+    }
+    
+    vec3 applySaturation(vec3 color, float sat) {
+      float lum = dot(color, vec3(0.299, 0.587, 0.114));
+      return mix(vec3(lum), color, sat);
+    }
 
     void main() {
       // Get base color
@@ -180,15 +218,23 @@ export const FaceShadingShader = {
           adjustedAngle
         );
       } 
-      // === LAMBERT FALLBACK ===
+      // === GLOBAL CEL FALLBACK (Main Shadow Logic) ===
       else {
         float NdotL = dot(normal, keyLightDir);
         float halfLambert = NdotL * 0.5 + 0.5;
-        shadowFactor = smoothstep(0.4, 0.6, halfLambert);
+        
+        // Use global threshold and softness sliders
+        shadowFactor = smoothstep(
+          uShadowThreshold - uShadowSoftness,
+          uShadowThreshold + uShadowSoftness,
+          halfLambert
+        );
       }
-
-      // Mix shadow and lit colors
-      vec3 shadowedColor = baseColor * uShadowColor * uShadowDarkness;
+        // Mix shadow and lit colors
+      // Map Darkness slider: 0.0 (brighter) -> 1.0 (black)
+      float darknessMult = max(0.0, 1.0 - uShadowDarkness);
+      vec3 shadowedColor = baseColor * uShadowColor * darknessMult;
+      
       vec3 litColor = baseColor * uKeyLightIntensity;
       vec3 diffuse = mix(shadowedColor, litColor, shadowFactor);
 
@@ -206,9 +252,18 @@ export const FaceShadingShader = {
       finalColor += ambientContribution;
       finalColor += uRimColor * rim * 0.3;
 
-      // Preserve saturation
-      float lum = dot(finalColor, vec3(0.299, 0.587, 0.114));
-      finalColor = mix(vec3(lum), finalColor, 1.1);
+      // === PROFESSIONAL COLOR GRADING ===
+      // Apply brightness first
+      finalColor *= uBrightness;
+      
+      // Apply saturation
+      finalColor = applySaturation(finalColor, uSaturation);
+      
+      // Apply temperature
+      finalColor = applyTemperature(finalColor, uTemperature);
+      
+      // Apply tint
+      finalColor = applyTint(finalColor, uTint);
 
       gl_FragColor = vec4(finalColor, texColor.a);
     }

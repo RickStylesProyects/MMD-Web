@@ -43,6 +43,12 @@ export const GradientRampShader = {
     uFillLightIntensity: { value: 0.25 },
     uAmbientIntensity: { value: 0.3 },
     uRimLightIntensity: { value: 0.35 },
+    
+    // Professional Color Grading (Clothing + Hair)
+    uSaturation: { value: 1.0 },
+    uTemperature: { value: 0.0 },
+    uTint: { value: 0.0 },
+    uBrightness: { value: 1.0 },
   },
   
   vertexShader: `
@@ -114,6 +120,12 @@ export const GradientRampShader = {
     uniform float uAmbientIntensity;
     uniform float uRimLightIntensity;
     
+    // Professional Color Grading
+    uniform float uSaturation;
+    uniform float uTemperature;
+    uniform float uTint;
+    uniform float uBrightness;
+    
     varying vec2 vUv;
     varying vec3 vNormal;
     varying vec3 vViewPosition;
@@ -124,6 +136,26 @@ export const GradientRampShader = {
     #include <packing>
     #include <lights_pars_begin>
     #include <shadowmap_pars_fragment>
+    
+    // Color Grading Utilities
+    vec3 applyTemperature(vec3 color, float temp) {
+      vec3 warm = vec3(1.0, 0.9, 0.7);
+      vec3 cool = vec3(0.7, 0.9, 1.0);
+      vec3 tempShift = mix(cool, warm, temp * 0.5 + 0.5);
+      return color * tempShift;
+    }
+    
+    vec3 applyTint(vec3 color, float tint) {
+      vec3 green = vec3(0.9, 1.0, 0.9);
+      vec3 magenta = vec3(1.0, 0.9, 1.0);
+      vec3 tintShift = mix(green, magenta, tint * 0.5 + 0.5);
+      return color * tintShift;
+    }
+    
+    vec3 applySaturation(vec3 color, float sat) {
+      float lum = dot(color, vec3(0.299, 0.587, 0.114));
+      return mix(vec3(lum), color, sat);
+    }
 
     void main() {
       vec4 texColor;
@@ -171,23 +203,31 @@ export const GradientRampShader = {
       halfLambert *= realShadow;
       
       float shadowMask;
-      vec3 shadowColor = baseColor * uShadowColor * uShadowDarkness;
-      vec3 litColor = baseColor * uKeyLightIntensity;
+
       
       if (uUseRamp > 0.5) {
-        // Use gradient ramp texture
-        float rampValue = texture2D(uRampTexture, vec2(halfLambert, 0.5)).r;
-        shadowMask = rampValue;
-      } else {
-        // Use smoothstep cel-shading
-        shadowMask = smoothstep(
+        // PROCEDURAL TOON RAMP (No Texture)
+        float toonEdge = smoothstep(
           uShadowThreshold - uShadowSoftness,
           uShadowThreshold + uShadowSoftness,
           halfLambert
         );
+        shadowMask = toonEdge;
+      } else {
+        // Fallback: Smooth Half-Lambert
+        shadowMask = halfLambert;
       }
       
-      vec3 diffuse = mix(shadowColor, litColor, shadowMask);
+      // Mix shadow and lit colors
+      // Map Darkness slider: 0.0 (brighter) -> 1.0 (black)
+      float darknessMult = max(0.0, 1.0 - uShadowDarkness);
+      vec3 shadowedColor = baseColor * uShadowColor * darknessMult;
+      shadowedColor = max(shadowedColor, vec3(0.01)); // Prevent total pitch black
+      
+      vec3 litColor = baseColor * uKeyLightIntensity;
+      
+      // Shadow mask logic: mix(shadow, lit, 0-1 mask)
+      vec3 diffuse = mix(shadowedColor, litColor, shadowMask);
 
       // === MATCAP (for metals) ===
       vec3 matcapContribution = vec3(0.0);
@@ -220,8 +260,18 @@ export const GradientRampShader = {
       finalColor += uRimColor * rim * 0.25;
       finalColor = mix(finalColor, finalColor + matcapContribution, uMatCapStrength);
 
-      float lum = dot(finalColor, vec3(0.299, 0.587, 0.114));
-      finalColor = mix(vec3(lum), finalColor, 1.1);
+      // === PROFESSIONAL COLOR GRADING ===
+      // Apply brightness first
+      finalColor *= uBrightness;
+      
+      // Apply saturation
+      finalColor = applySaturation(finalColor, uSaturation);
+      
+      // Apply temperature
+      finalColor = applyTemperature(finalColor, uTemperature);
+      
+      // Apply tint
+      finalColor = applyTint(finalColor, uTint);
 
       gl_FragColor = vec4(finalColor, texColor.a);
     }

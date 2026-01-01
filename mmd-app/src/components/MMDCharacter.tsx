@@ -73,11 +73,29 @@ export function MMDCharacter({
   // Material type detection helpers
   const isFaceMaterial = (mat: any, name: string): boolean => {
     const lowerName = name.toLowerCase();
+    
+    // Exclude only explicit body/torso materials
+    const isBody = lowerName.includes('body') || lowerName.includes('体') || lowerName.includes('胴');
+    if (isBody) return false;
+    
+    // Face keywords (Chinese model naming like Ganyu)
+    // Now INCLUDING 肌 (skin) to ensure head and body use the same shader
     return (
+      lowerName.includes('面') ||        // Chinese: miàn (face) - 面1, 面2
+      lowerName.includes('脸') ||        // Chinese: liǎn (face) - 脸红 (blush)
+      lowerName.includes('肌') ||        // SKIN - now treated as face material
+      lowerName.includes('眉') ||        // eyebrow
+      lowerName.includes('目') ||        // eye (目, 目星, 白目)
+      lowerName.includes('眼') ||        // eye (alternative)
+      lowerName.includes('睫') ||        // eyelash
+      lowerName.includes('口') ||        // mouth (口舌)
+      lowerName.includes('齿') ||        // teeth
+      lowerName.includes('舌') ||        // tongue
+      lowerName.includes('二重') ||      // double eyelid
       lowerName.includes('face') ||
-      lowerName.includes('顔') ||
+      lowerName.includes('顔') ||        // Japanese: kao (face)
       lowerName.includes('head') ||
-      lowerName.includes('肌')
+      lowerName.includes('头')           // Chinese: tóu (head)
     );
   };
 
@@ -85,9 +103,15 @@ export function MMDCharacter({
     const lowerName = name.toLowerCase();
     return (
       lowerName.includes('hair') ||
-      lowerName.includes('髪') ||
-      lowerName.includes('前髪') ||
-      lowerName.includes('後髪')
+      lowerName.includes('髪') ||        // Japanese: kami (hair)
+      lowerName.includes('前髪') ||      // Bangs
+      lowerName.includes('後髪') ||      // Back hair
+      lowerName.includes('发') ||        // Chinese: fà (hair)
+      lowerName.includes('kami') ||      // Romanized Japanese
+      lowerName.includes('ahoge') ||     // Ahoge/antenna hair
+      lowerName.includes('ponytail') ||
+      lowerName.includes('twintail') ||
+      lowerName.includes('角')           // Horn (often part of hair/headpiece for characters like Ganyu)
     );
   };
 
@@ -95,15 +119,18 @@ export function MMDCharacter({
   const createFallbackMaterial = (oldMat: any): THREE.Material => {
     console.log('🔄 Creating fallback MeshToonMaterial for:', oldMat.name);
     
-    const toonMat = new THREE.MeshToonMaterial({
+    const m = new THREE.MeshToonMaterial({
       color: oldMat.color ? oldMat.color.clone() : new THREE.Color('#ffffff'),
       map: oldMat.map || null,
-      side: THREE.DoubleSide,
       transparent: oldMat.transparent || false,
+      opacity: oldMat.opacity !== undefined ? oldMat.opacity : 1, // Ensure opacity is set if present, default to 1
       alphaTest: oldMat.alphaTest || 0.01,
+      side: THREE.DoubleSide
     });
     
-    toonMat.userData = { 
+    // THREE v150+ ignores skinning/morphTargets on MeshToonMaterial
+    // but we can set them toUserData or just ignore them since it's a fallback
+    m.userData = { 
       isFallbackMaterial: true, 
       originalName: oldMat.name || 'unknown' 
     };
@@ -122,7 +149,7 @@ export function MMDCharacter({
       if ((child as SkinnedMesh).isMesh) {
         const m = child as SkinnedMesh;
         m.castShadow = true;
-        m.receiveShadow = true;
+        m.receiveShadow = false; // Disable self-shadowing to prevent acne/black patches
 
         const applyShader = (oldMat: any, index: number) => {
           // Skip if already processed
@@ -323,6 +350,12 @@ export function MMDCharacter({
     if (modelCache.has(url)) {
       console.log("📦 Using cached model:", url);
       const cachedMesh = modelCache.get(url)!.clone();
+      
+      // CRITICAL FIX: Reset pose to T-Pose before re-initializing physics
+      // This clears any "exploded" bone transforms from previous physics session
+      if (cachedMesh.skeleton) cachedMesh.skeleton.pose();
+      cachedMesh.pose();
+      
       meshRef.current = cachedMesh;
       applyGenshinShader(cachedMesh);
       initializeRobustSystem(cachedMesh);
@@ -380,19 +413,91 @@ export function MMDCharacter({
       }
     );
     
-    // Cleanup
+    // CLEANUP: Dispose of physics to prevent "Zombie Bodies" exploding the next load
     return () => {
-      if (helperRef.current && meshRef.current) {
-        try {
-          helperRef.current.remove(meshRef.current);
-        } catch (e) {}
-        helperRef.current = null;
-      }
-      meshRef.current = null;
-      setMesh(null);
-      setAnimationLoaded(false);
+        console.log("🧹 Cleaning up MMD Character resources...");
+        if (helperRef.current && meshRef.current) {
+            try {
+                helperRef.current.remove(meshRef.current);
+                // Also explicitly disable physics to be sure
+                helperRef.current.enable('physics', false); 
+            } catch (e) {
+                console.warn("Cleanup error:", e);
+            }
+        }
     };
+
   }, [url, hasPhysics, applyGenshinShader, loader]);
+
+  // Update shader uniforms when settings change - PROCEDURAL FIX
+  useEffect(() => {
+    if (!mesh) return;
+
+    mesh.traverse((child) => {
+      if (child.isMesh && child.material) {
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        
+        materials.forEach((mat) => {
+          if (mat.userData?.isGenshinShader) {
+             const type = mat.userData.materialType;
+
+             // === COMMON SETTINGS ===
+             // Ramp (Procedural Toggle)
+             if (mat.uniforms.uUseRamp) mat.uniforms.uUseRamp.value = shaderSettings.useGradientRamp ? 1.0 : 0.0;
+             
+             // Rim Light
+             if (mat.uniforms.uRimStrength) mat.uniforms.uRimStrength.value = shaderSettings.rimStrength;
+             if (mat.uniforms.uRimPower) mat.uniforms.uRimPower.value = shaderSettings.rimPower;
+             
+             // === TYPE SPECIFIC ===
+             if (type === 'face') {
+                 // Face Settings (includes skin) - NOW UNIFIED
+                 if (mat.uniforms.uShadowDarkness) mat.uniforms.uShadowDarkness.value = shaderSettings.shadowDarkness ?? 0.4;
+                 if (mat.uniforms.uShadowThreshold) mat.uniforms.uShadowThreshold.value = shaderSettings.shadowThreshold ?? 0.45;
+                 if (mat.uniforms.uShadowSoftness) mat.uniforms.uShadowSoftness.value = shaderSettings.shadowSoftness ?? 0.08;
+                 
+                 // Face still has its unique feather for SDF (though SDF is fallback now)
+                 if (mat.uniforms.uShadowFeather) mat.uniforms.uShadowFeather.value = shaderSettings.faceShadowFeather ?? 0.05;
+                 
+                 // Color Grading - SKIN GROUP with robust fallbacks
+                 if (mat.uniforms.uSaturation) mat.uniforms.uSaturation.value = shaderSettings.skinSaturation ?? 1.0;
+                 if (mat.uniforms.uTemperature) mat.uniforms.uTemperature.value = shaderSettings.skinTemperature ?? 0.0;
+                 if (mat.uniforms.uTint) mat.uniforms.uTint.value = shaderSettings.skinTint ?? 0.0;
+                 if (mat.uniforms.uBrightness) mat.uniforms.uBrightness.value = shaderSettings.skinBrightness ?? 1.0;
+             } 
+             else if (type === 'hair') {
+                 // Hair Settings - CORRECTED UNIFORM NAMES (uHair prefix)
+                 if (mat.uniforms.uHairSpecularPower) mat.uniforms.uHairSpecularPower.value = shaderSettings.hairSpecularPower ?? 32;
+                 if (mat.uniforms.uHairSpecularStrength) mat.uniforms.uHairSpecularStrength.value = shaderSettings.hairSpecularStrength ?? 0.6;
+                 if (mat.uniforms.uHairSpecularShift) mat.uniforms.uHairSpecularShift.value = shaderSettings.hairSpecularShift ?? 0.1;
+                 
+                 // Hair also uses base shadow darkness
+                 if (mat.uniforms.uShadowDarkness) mat.uniforms.uShadowDarkness.value = shaderSettings.shadowDarkness ?? 0.4;
+
+                 // Color Grading - CLOTHING + HAIR GROUP with robust fallbacks
+                 if (mat.uniforms.uSaturation) mat.uniforms.uSaturation.value = shaderSettings.clothingSaturation ?? 1.0;
+                 if (mat.uniforms.uTemperature) mat.uniforms.uTemperature.value = shaderSettings.clothingTemperature ?? 0.0;
+                 if (mat.uniforms.uTint) mat.uniforms.uTint.value = shaderSettings.clothingTint ?? 0.0;
+                 if (mat.uniforms.uBrightness) mat.uniforms.uBrightness.value = shaderSettings.clothingBrightness ?? 1.0;
+             } 
+             else {
+                 // Body / Props Settings
+                 if (mat.uniforms.uShadowDarkness) mat.uniforms.uShadowDarkness.value = shaderSettings.shadowDarkness ?? 0.4;
+                 if (mat.uniforms.uShadowThreshold) mat.uniforms.uShadowThreshold.value = shaderSettings.shadowThreshold ?? 0.45;
+                 if (mat.uniforms.uShadowSoftness) mat.uniforms.uShadowSoftness.value = shaderSettings.shadowSoftness ?? 0.08;
+
+                 // Color Grading - CLOTHING + HAIR GROUP with robust fallbacks
+                 if (mat.uniforms.uSaturation) mat.uniforms.uSaturation.value = shaderSettings.clothingSaturation ?? 1.0;
+                 if (mat.uniforms.uTemperature) mat.uniforms.uTemperature.value = shaderSettings.clothingTemperature ?? 0.0;
+                 if (mat.uniforms.uTint) mat.uniforms.uTint.value = shaderSettings.clothingTint ?? 0.0;
+                 if (mat.uniforms.uBrightness) mat.uniforms.uBrightness.value = shaderSettings.clothingBrightness ?? 1.0;
+             }
+          }
+        });
+      }
+    });
+    
+  }, [mesh, shaderSettings]); // Trigger on ANY shader setting change
   
   // =========================================================
   // MULTI-TRACK MOTION HANDLING (Blending)

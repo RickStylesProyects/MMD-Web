@@ -14,7 +14,7 @@ export interface RampConfig {
  * Generate a 1D gradient ramp texture
  */
 export function generateRampTexture(config: RampConfig, width: number = 256): THREE.DataTexture {
-  const data = new Uint8Array(width);
+  const data = new Uint8Array(width * 4); // RGBA = 4 bytes per pixel
   
   for (let i = 0; i < width; i++) {
     const x = i / (width - 1);
@@ -40,10 +40,17 @@ export function generateRampTexture(config: RampConfig, width: number = 256): TH
     }
     
     // Clamp 0-1 and convert to 0-255
-    data[i] = Math.floor(Math.max(0, Math.min(1, value)) * 255);
+    const val = Math.floor(Math.max(0, Math.min(1, value)) * 255);
+    
+    // Fill RGBA channels
+    const offset = i * 4;
+    data[offset] = val;     // R
+    data[offset + 1] = val; // G
+    data[offset + 2] = val; // B
+    data[offset + 3] = 255; // A (Full Alpha)
   }
   
-  const texture = new THREE.DataTexture(data, width, 1, THREE.RedFormat);
+  const texture = new THREE.DataTexture(data, width, 1, THREE.RGBAFormat);
   texture.needsUpdate = true;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
