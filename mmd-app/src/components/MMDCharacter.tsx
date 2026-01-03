@@ -78,29 +78,77 @@ export function MMDCharacter({
   const isFaceMaterial = (mat: any, name: string): boolean => {
     const lowerName = name.toLowerCase();
     
-    // Exclude only explicit body/torso materials
-    const isBody = lowerName.includes('body') || lowerName.includes('体') || lowerName.includes('胴');
-    if (isBody) return false;
+    // Exclude only clothing/accessories (not skin)
+    const isClothing = lowerName.includes('top') || lowerName.includes('bottom') || 
+                       lowerName.includes('shirt') || lowerName.includes('pants') ||
+                       lowerName.includes('dress') || lowerName.includes('skirt') ||
+                       lowerName.includes('sandal') || lowerName.includes('shoe') ||
+                       lowerName.includes('belt') || lowerName.includes('strap') ||
+                       lowerName.includes('choker') || lowerName.includes('ribbon') ||
+                       lowerName.includes('袖') ||    // sleeve
+                       lowerName.includes('裙') ||    // skirt
+                       lowerName.includes('裤') ||    // pants
+                       lowerName.includes('衣') ||    // clothing
+                       lowerName.includes('装饰') ||  // decoration
+                       lowerName.includes('摆') ||    // hem/swing
+                       lowerName.includes('结') ||    // knot/bow
+                       lowerName.includes('带') ||    // belt/strap
+                       lowerName.includes('饰') ||    // ornament
+                       lowerName.includes('蝴蝶结') || // bow
+                       lowerName.includes('宝石') ||  // gem
+                       lowerName.includes('珍珠');    // pearl
+    if (isClothing) return false;
     
-    // Face keywords (Chinese model naming like Ganyu)
-    // Now INCLUDING 肌 (skin) to ensure head and body use the same shader
+    // Face/Skin keywords (Chinese Simplified, Traditional, Japanese, and English)
+    // ALL SKIN should use the same shader for consistent appearance
     return (
-      lowerName.includes('颜') ||        // Chinese: yán (face/countenance) - 颜, 颜2
-      lowerName.includes('面') ||        // Chinese: miàn (face) - 面1, 面2
-      lowerName.includes('脸') ||        // Chinese: liǎn (face) - 脸红 (blush)
-      lowerName.includes('肌') ||        // SKIN - now treated as face material
+      // Chinese characters (Simplified AND Traditional)
+      lowerName.includes('颜') ||        // Simplified: yán (face/countenance)
+      lowerName.includes('顏') ||        // Traditional: yán (face/countenance) - 顏1, 顏2
+      lowerName.includes('面') ||        // miàn (face) - 面1, 面2
+      lowerName.includes('脸') ||        // Simplified: liǎn (face)
+      lowerName.includes('臉') ||        // Traditional: liǎn (face)
+      lowerName.includes('肌') ||        // SKIN
       lowerName.includes('眉') ||        // eyebrow
-      lowerName.includes('目') ||        // eye (目, 目星, 白目)
-      lowerName.includes('眼') ||        // eye (alternative) - also catches 神之眼
+      lowerName.includes('目') ||        // eye (目, 目星, 白目, 目光)
+      lowerName.includes('眼') ||        // eye (alternative) - 神之眼
       lowerName.includes('睫') ||        // eyelash
       lowerName.includes('口') ||        // mouth (口舌)
-      lowerName.includes('齿') ||        // teeth
+      lowerName.includes('齿') ||        // Simplified: teeth
+      lowerName.includes('齒') ||        // Traditional: teeth
       lowerName.includes('舌') ||        // tongue
       lowerName.includes('二重') ||      // double eyelid
-      lowerName.includes('face') ||
+      lowerName.includes('手') ||        // hand
+      lowerName.includes('体') ||        // Simplified: body
+      lowerName.includes('體') ||        // Traditional: body
+      // Japanese characters
       lowerName.includes('顔') ||        // Japanese: kao (face)
+      lowerName.includes('头') ||        // Simplified: tóu (head)
+      lowerName.includes('頭') ||        // Traditional: tóu (head)
+      // English terms - Face parts
+      lowerName.includes('face') ||
       lowerName.includes('head') ||
-      lowerName.includes('头')           // Chinese: tóu (head)
+      lowerName.includes('eye') ||       // eye, eyewht, eyeh, eyebrow
+      lowerName.includes('brow') ||      // eyebrow
+      lowerName.includes('lash') ||      // eyelash
+      lowerName.includes('teeth') ||     // uteeth, lteeth
+      lowerName.includes('tooth') ||
+      lowerName.includes('tng') ||       // tongue (abbreviated)
+      lowerName.includes('tongue') ||
+      lowerName.includes('blush') ||     // blush/rubor
+      lowerName.includes('tear') ||      // tears
+      lowerName.includes('mouth') ||
+      lowerName.includes('lip') ||       // lips
+      // English terms - Skin/Body parts (should use same shader as face)
+      lowerName.includes('skin') ||      // skin
+      lowerName.includes('neck') ||      // neck/cuello
+      lowerName.includes('body') ||      // body skin
+      lowerName.includes('chest') ||     // chest skin
+      lowerName.includes('torso') ||     // torso skin
+      lowerName.includes('feet') ||      // feet skin
+      lowerName.includes('arm') ||       // arms
+      lowerName.includes('leg') ||       // legs
+      lowerName.includes('hand')         // hands
     );
   };
 

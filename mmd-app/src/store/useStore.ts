@@ -237,6 +237,9 @@ export interface MMDStore {
   // Atmospheric Actions
   setAtmosphericSettings: (settings: Partial<AtmosphericSettings>) => void;
   
+  // Physics Actions
+  setPhysicsSettings: (settings: Partial<PhysicsSettings>) => void;
+  
   // Animation Actions
   setPlaying: (playing: boolean) => void;
   setCurrentTime: (time: number) => void;
@@ -619,6 +622,12 @@ export const useStore = create<MMDStore>()(
       setAtmosphericSettings: (settings: Partial<AtmosphericSettings>) =>
         set((state) => ({
           atmosphericSettings: { ...state.atmosphericSettings, ...settings }
+        })),
+      
+      // Physics Actions
+      setPhysicsSettings: (settings: Partial<PhysicsSettings>) =>
+        set((state) => ({
+          physicsSettings: { ...state.physicsSettings, ...settings }
         })),
       
       // Animation Actions
