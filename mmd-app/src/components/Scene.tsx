@@ -103,6 +103,16 @@ function SceneContent() {
       {/* Volumetric Godrays */}
       <GodraysGroup />
 
+      {/* Shadow Receiver Plane - Invisible plane to receive shadows */}
+      <mesh 
+        rotation={[-Math.PI / 2, 0, 0]} 
+        position={[0, -0.01, 0]}
+        receiveShadow
+      >
+        <planeGeometry args={[50, 50]} />
+        <shadowMaterial opacity={0.3} />
+      </mesh>
+
       {/* Grid Helper (subtle) */}
       <Grid 
         infiniteGrid 

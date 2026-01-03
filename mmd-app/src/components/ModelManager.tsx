@@ -197,6 +197,7 @@ export function ModelManager() {
                   type="file" 
                   className="hidden" 
                   accept=".pmx,.pmd"
+                  onChange={handleFileUpload}
                 />
               </label>
             )}

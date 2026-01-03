@@ -144,6 +144,62 @@ export function SettingsPanel() {
                 />
                 <span>{(lightSettings?.rimIntensity ?? 0.5).toFixed(1)}</span>
               </div>
+              
+              <h4>☀️ Posición del Sol (Key Light)</h4>
+              <div className="setting-row">
+                <label>X (Horizontal)</label>
+                <input 
+                  type="range" 
+                  min="-10" 
+                  max="10" 
+                  step="0.5"
+                  value={lightSettings?.keyPosition?.[0] ?? 2}
+                  onChange={(e) => setLightSettings({ 
+                    keyPosition: [
+                      parseFloat(e.target.value), 
+                      lightSettings.keyPosition[1], 
+                      lightSettings.keyPosition[2]
+                    ] as [number, number, number]
+                  })}
+                />
+                <span>{(lightSettings?.keyPosition?.[0] ?? 2).toFixed(1)}</span>
+              </div>
+              <div className="setting-row">
+                <label>Y (Altura)</label>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="15" 
+                  step="0.5"
+                  value={lightSettings?.keyPosition?.[1] ?? 5}
+                  onChange={(e) => setLightSettings({ 
+                    keyPosition: [
+                      lightSettings.keyPosition[0], 
+                      parseFloat(e.target.value), 
+                      lightSettings.keyPosition[2]
+                    ] as [number, number, number]
+                  })}
+                />
+                <span>{(lightSettings?.keyPosition?.[1] ?? 5).toFixed(1)}</span>
+              </div>
+              <div className="setting-row">
+                <label>Z (Profundidad)</label>
+                <input 
+                  type="range" 
+                  min="-15" 
+                  max="5" 
+                  step="0.5"
+                  value={lightSettings?.keyPosition?.[2] ?? -8}
+                  onChange={(e) => setLightSettings({ 
+                    keyPosition: [
+                      lightSettings.keyPosition[0], 
+                      lightSettings.keyPosition[1], 
+                      parseFloat(e.target.value)
+                    ] as [number, number, number]
+                  })}
+                />
+                <span>{(lightSettings?.keyPosition?.[2] ?? -8).toFixed(1)}</span>
+              </div>
             </div>
           )}
           
@@ -559,7 +615,7 @@ export function SettingsPanel() {
                 <input 
                   type="range" 
                   min="0" 
-                  max="5" 
+                  max="50" 
                   step="0.1"
                   value={postProcessingSettings.bloomThreshold}
                   onChange={(e) => setPostProcessingSettings({ bloomThreshold: parseFloat(e.target.value) })}

@@ -32,7 +32,10 @@ class ShaderCache {
       vertexShader,
       fragmentShader,
       uniforms: THREE.UniformsUtils.clone(uniforms),
-      defines,
+      defines: {
+        USE_SHADOWMAP: '', // Enable shadowmap support
+        ...defines
+      },
       lights: true,
       name: 'GenshinShader_Cached'
     });

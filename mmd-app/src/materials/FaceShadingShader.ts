@@ -10,6 +10,7 @@ export const FaceShadingShader = {
   uniforms: {
     ...THREE.UniformsLib.common,
     ...THREE.UniformsLib.lights,
+    ...THREE.UniformsLib.shadowmap, // Add shadowmap uniforms
     ...THREE.UniformsLib.fog,
     
     // Base material
@@ -132,6 +133,7 @@ export const FaceShadingShader = {
     #include <packing>
     #include <lights_pars_begin>
     #include <shadowmap_pars_fragment>
+    #include <shadowmask_pars_fragment>
     
     // Color Grading Utilities
     vec3 applyTemperature(vec3 color, float temp) {
@@ -180,9 +182,9 @@ export const FaceShadingShader = {
       
       // Calculate Shadow Map
       float realShadow = 1.0;
-      // #ifdef USE_SHADOWMAP
-      //   realShadow = getShadowMask();
-      // #endif
+      #ifdef USE_SHADOWMAP
+        realShadow = getShadowMask();
+      #endif
 
       float shadowFactor = 1.0;
       
@@ -230,7 +232,11 @@ export const FaceShadingShader = {
           halfLambert
         );
       }
-        // Mix shadow and lit colors
+      
+      // Apply real shadow from shadowmap
+      shadowFactor *= realShadow;
+      
+      // Mix shadow and lit colors
       // Map Darkness slider: 0.0 (brighter) -> 1.0 (black)
       float darknessMult = max(0.0, 1.0 - uShadowDarkness);
       vec3 shadowedColor = baseColor * uShadowColor * darknessMult;

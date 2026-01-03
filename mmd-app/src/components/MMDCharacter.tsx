@@ -60,8 +60,13 @@ export function MMDCharacter({
   const mixerRef = useRef<AnimationMixer | null>(null);
   const isExternalMixerRef = useRef(false);
   const ikSolverRef = useRef<any>(null);
-  // useMemo for loader to avoid re-instantiation and ensure stable reference
   const loader = useMemo(() => new MMDLoader(), []);
+  
+  // Track shader settings in a ref to avoid callback re-instantiation
+  const shaderSettingsRef = useRef(shaderSettings);
+  useEffect(() => {
+    shaderSettingsRef.current = shaderSettings;
+  }, [shaderSettings]);
   
   // State
   const [mesh, setMesh] = useState<THREE.SkinnedMesh | null>(null);
@@ -135,7 +140,7 @@ export function MMDCharacter({
       originalName: oldMat.name || 'unknown' 
     };
     
-    return toonMat;
+    return m;
   };
 
   // Apply shader system to model - WITH FACE SDF, HAIR, RAMP, AND MATCAP SUPPORT
@@ -149,7 +154,8 @@ export function MMDCharacter({
       if ((child as SkinnedMesh).isMesh) {
         const m = child as SkinnedMesh;
         m.castShadow = true;
-        m.receiveShadow = false; // Disable self-shadowing to prevent acne/black patches
+        m.receiveShadow = true; // Enable shadows
+        m.frustumCulled = false; // Prevent model disappearing at certain angles
 
         const applyShader = (oldMat: any, index: number) => {
           // Skip if already processed
@@ -234,10 +240,13 @@ export function MMDCharacter({
           shaderMat.depthWrite = oldMat.depthWrite !== false; // Inherit or default to true
           
           // Apply gradient ramp (for body/cloth materials)
-          if (!isFace && !isHair && shaderMat.uniforms.uRampTexture) {
-             // IMPORTANTE: Sobrescribir el dummy con el ramp real si corresponde
-             shaderMat.uniforms.uRampTexture.value = defaultRamp || whiteTex;
-             shaderMat.uniforms.uUseRamp.value = shaderSettings.useGradientRamp ? 1.0 : 0.0;
+          if (!isFace && !isHair) {
+             if (shaderMat.uniforms.uRampTexture) {
+                shaderMat.uniforms.uRampTexture.value = defaultRamp || whiteTex;
+             }
+             if (shaderMat.uniforms.uUseRamp) {
+                shaderMat.uniforms.uUseRamp.value = shaderSettingsRef.current.useGradientRamp ? 1.0 : 0.0;
+             }
           }
           
           // Mark with metadata
@@ -276,7 +285,7 @@ export function MMDCharacter({
         }
       }
     });
-  }, [shaderSettings.useGradientRamp]);
+  }, []); // Stable reference
   
   // Load model
   useEffect(() => {
@@ -367,10 +376,11 @@ export function MMDCharacter({
     // Modify URL for blob handling
     const modifiedUrl = url.startsWith('blob:') ? url + '#.pmx' : url;
     
+    console.log("📥 Loading PMX:", modifiedUrl);
     loader.load(
       modifiedUrl,
       (loadedMesh) => {
-        console.log("✅ MMD Model loaded successfully");
+        console.log("✅ MMD Model loaded successfully:", url);
         // DEBUG: Check Bone Names
         if (loadedMesh.skeleton && loadedMesh.skeleton.bones) {
             console.log("🍖 Model Bones (First 5):", loadedMesh.skeleton.bones.slice(0, 5).map(b => b.name));
@@ -427,7 +437,7 @@ export function MMDCharacter({
         }
     };
 
-  }, [url, hasPhysics, applyGenshinShader, loader]);
+  }, [url, hasPhysics, applyGenshinShader, loader]); // applyGenshinShader is now stable
 
   // Update shader uniforms when settings change - PROCEDURAL FIX
   useEffect(() => {

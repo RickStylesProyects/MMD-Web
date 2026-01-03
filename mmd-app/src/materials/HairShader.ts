@@ -9,6 +9,7 @@ export const HairShader = {
   uniforms: {
     ...THREE.UniformsLib.common,
     ...THREE.UniformsLib.lights,
+    ...THREE.UniformsLib.shadowmap, // Add shadowmap uniforms
     ...THREE.UniformsLib.fog,
     
     // Base material
@@ -136,6 +137,7 @@ export const HairShader = {
     #include <packing>
     #include <lights_pars_begin>
     #include <shadowmap_pars_fragment>
+    #include <shadowmask_pars_fragment>
     
     // Color Grading Utilities
     vec3 applyTemperature(vec3 color, float temp) {
@@ -183,9 +185,9 @@ export const HairShader = {
       
       // Calculate Shadow Map
       float realShadow = 1.0;
-      // #ifdef USE_SHADOWMAP
-      //   realShadow = getShadowMask();
-      // #endif
+      #ifdef USE_SHADOWMAP
+        realShadow = getShadowMask();
+      #endif
 
       // === DIFFUSE WITH CEL-SHADING ===
       float NdotL = dot(normal, keyLightDir);
@@ -196,6 +198,9 @@ export const HairShader = {
         uShadowThreshold + uShadowSoftness,
         halfLambert
       );
+      
+      // Apply real shadow from shadowmap
+      shadowMask *= realShadow;
       
       // Map Darkness slider: 0.0 (brighter) -> 1.0 (black)
       float darknessMult = max(0.0, 1.0 - uShadowDarkness);

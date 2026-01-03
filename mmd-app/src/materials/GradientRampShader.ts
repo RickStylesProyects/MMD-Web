@@ -9,6 +9,7 @@ export const GradientRampShader = {
   uniforms: {
     ...THREE.UniformsLib.common,
     ...THREE.UniformsLib.lights,
+    ...THREE.UniformsLib.shadowmap, // Add shadowmap uniforms
     ...THREE.UniformsLib.fog,
     uColor: { value: new THREE.Color('#ffffff') },
     uMap: { value: null },
@@ -136,6 +137,7 @@ export const GradientRampShader = {
     #include <packing>
     #include <lights_pars_begin>
     #include <shadowmap_pars_fragment>
+    #include <shadowmask_pars_fragment>
     
     // Color Grading Utilities
     vec3 applyTemperature(vec3 color, float temp) {
@@ -180,9 +182,9 @@ export const GradientRampShader = {
       
       // Calculate Shadow Map (Standard Three.js Shadows)
       float realShadow = 1.0;
-      // #ifdef USE_SHADOWMAP
-      //   realShadow = getShadowMask();
-      // #endif
+      #ifdef USE_SHADOWMAP
+        realShadow = getShadowMask();
+      #endif
 
       vec3 fillLightDir = normalize(vec3(-0.7, 0.3, -0.5));
       float fillNdotL = max(dot(normal, fillLightDir), 0.0);
