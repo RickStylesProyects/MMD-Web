@@ -4,13 +4,14 @@ import './SettingsPanel.css';
 
 export function SettingsPanel() {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'lighting' | 'shader' | 'post' | 'camera'>('lighting');
+  const [activeTab, setActiveTab] = useState<'lighting' | 'shader' | 'post' | 'camera' | 'physics'>('lighting');
   
   const { 
     lightSettings, setLightSettings, 
     shaderSettings, setShaderSettings,
     postProcessingSettings, setPostProcessingSettings,
     atmosphericSettings, setAtmosphericSettings,
+    physicsSettings, setPhysicsSettings,
     models, activeModelId, updateModelTransform 
   } = useStore();
 
@@ -59,6 +60,12 @@ export function SettingsPanel() {
               onClick={() => setActiveTab('camera')}
             >
               📷 Cámara
+            </button>
+            <button 
+              className={activeTab === 'physics' ? 'active' : ''}
+              onClick={() => setActiveTab('physics')}
+            >
+              ⚙️ Física
             </button>
           </div>
           
@@ -242,45 +249,6 @@ export function SettingsPanel() {
                   onChange={(e) => setShaderSettings({ shadowSoftness: parseFloat(e.target.value) })}
                 />
                 <span>{(shaderSettings?.shadowSoftness ?? 0.05).toFixed(2)}</span>
-              </div>
-              
-              
-              <h4>💇 Cabello (Hair)</h4>
-              <div className="setting-row">
-                <label>Specular Power</label>
-                <input 
-                  type="range" 
-                  min="8" 
-                  max="128" 
-                  step="4"
-                  value={shaderSettings?.hairSpecularPower ?? 32}
-                  onChange={(e) => setShaderSettings({ hairSpecularPower: parseFloat(e.target.value) })}
-                />
-                <span>{(shaderSettings?.hairSpecularPower ?? 32).toFixed(0)}</span>
-              </div>
-              <div className="setting-row">
-                <label>Specular Strength</label>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="2" 
-                  step="0.1"
-                  value={shaderSettings?.hairSpecularStrength ?? 1.0}
-                  onChange={(e) => setShaderSettings({ hairSpecularStrength: parseFloat(e.target.value) })}
-                />
-                <span>{(shaderSettings?.hairSpecularStrength ?? 1.0).toFixed(1)}</span>
-              </div>
-              <div className="setting-row">
-                <label>Specular Shift</label>
-                <input 
-                  type="range" 
-                  min="-0.5" 
-                  max="0.5" 
-                  step="0.05"
-                  value={shaderSettings?.hairSpecularShift ?? 0}
-                  onChange={(e) => setShaderSettings({ hairSpecularShift: parseFloat(e.target.value) })}
-                />
-                <span>{(shaderSettings?.hairSpecularShift ?? 0).toFixed(2)}</span>
               </div>
               
 {/* 
@@ -686,6 +654,169 @@ export function SettingsPanel() {
           {activeTab === 'camera' && (
             <div className="settings-section">
               <p className="coming-soon">📷 Controles de cámara próximamente...</p>
+            </div>
+          )}
+          
+          {/* Physics Tab */}
+          {activeTab === 'physics' && (
+            <div className="settings-section">
+              <h4>🌍 Mundo Físico</h4>
+              <div className="setting-row">
+                <label>
+                  <input 
+                    type="checkbox"
+                    checked={physicsSettings?.enabled ?? true}
+                    onChange={(e) => setPhysicsSettings({ enabled: e.target.checked })}
+                  />
+                  Activar Física
+                </label>
+              </div>
+              
+              <div className="setting-row">
+                <label>Gravedad</label>
+                <input 
+                  type="range" 
+                  min="-20" 
+                  max="0" 
+                  step="0.5"
+                  value={physicsSettings?.gravity ?? -9.8}
+                  onChange={(e) => setPhysicsSettings({ gravity: parseFloat(e.target.value) })}
+                  disabled={!physicsSettings?.enabled}
+                />
+                <span>{(physicsSettings?.gravity ?? -9.8).toFixed(1)} m/s²</span>
+              </div>
+              
+              <div className="setting-row">
+                <label>Damping Global</label>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="0.1" 
+                  step="0.001"
+                  value={physicsSettings?.worldDamping ?? 0.01}
+                  onChange={(e) => setPhysicsSettings({ worldDamping: parseFloat(e.target.value) })}
+                  disabled={!physicsSettings?.enabled}
+                />
+                <span>{(physicsSettings?.worldDamping ?? 0.01).toFixed(3)}</span>
+              </div>
+              
+              <h4>🎯 Cuerpos Rígidos</h4>
+              <div className="setting-row">
+                <label>Masa</label>
+                <input 
+                  type="range" 
+                  min="0.1" 
+                  max="5" 
+                  step="0.1"
+                  value={physicsSettings?.bodyMass ?? 1.0}
+                  onChange={(e) => setPhysicsSettings({ bodyMass: parseFloat(e.target.value) })}
+                  disabled={!physicsSettings?.enabled}
+                />
+                <span>{(physicsSettings?.bodyMass ?? 1.0).toFixed(1)}</span>
+              </div>
+              
+              <div className="setting-row">
+                <label>Damping (Resistencia)</label>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="1" 
+                  step="0.05"
+                  value={physicsSettings?.bodyDamping ?? 0.8}
+                  onChange={(e) => setPhysicsSettings({ bodyDamping: parseFloat(e.target.value) })}
+                  disabled={!physicsSettings?.enabled}
+                />
+                <span>{(physicsSettings?.bodyDamping ?? 0.8).toFixed(2)}</span>
+              </div>
+              
+              <div className="setting-row">
+                <label>Fricción</label>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="1" 
+                  step="0.05"
+                  value={physicsSettings?.bodyFriction ?? 0.5}
+                  onChange={(e) => setPhysicsSettings({ bodyFriction: parseFloat(e.target.value) })}
+                  disabled={!physicsSettings?.enabled}
+                />
+                <span>{(physicsSettings?.bodyFriction ?? 0.5).toFixed(2)}</span>
+              </div>
+              
+              <h4>💥 Colisiones</h4>
+              <div className="setting-row">
+                <label>Margen de Colisión</label>
+                <input 
+                  type="range" 
+                  min="0.001" 
+                  max="0.05" 
+                  step="0.001"
+                  value={physicsSettings?.collisionMargin ?? 0.01}
+                  onChange={(e) => setPhysicsSettings({ collisionMargin: parseFloat(e.target.value) })}
+                  disabled={!physicsSettings?.enabled}
+                />
+                <span>{(physicsSettings?.collisionMargin ?? 0.01).toFixed(3)}</span>
+              </div>
+              
+              <p className="setting-hint" style={{ fontSize: '0.8em', opacity: 0.7, marginTop: '5px' }}>
+                ⚠️ Aumentar el margen de colisión ayuda a prevenir que el cabello/ropa atraviesen el cuerpo
+              </p>
+              
+              <h4>🔗 Constraints (Joints)</h4>
+              <div className="setting-row">
+                <label>Rigidez</label>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="1" 
+                  step="0.05"
+                  value={physicsSettings?.constraintStiffness ?? 0.8}
+                  onChange={(e) => setPhysicsSettings({ constraintStiffness: parseFloat(e.target.value) })}
+                  disabled={!physicsSettings?.enabled}
+                />
+                <span>{(physicsSettings?.constraintStiffness ?? 0.8).toFixed(2)}</span>
+              </div>
+              
+              <div className="setting-row">
+                <label>Damping de Joints</label>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="0.5" 
+                  step="0.01"
+                  value={physicsSettings?.constraintDamping ?? 0.1}
+                  onChange={(e) => setPhysicsSettings({ constraintDamping: parseFloat(e.target.value) })}
+                  disabled={!physicsSettings?.enabled}
+                />
+                <span>{(physicsSettings?.constraintDamping ?? 0.1).toFixed(2)}</span>
+              </div>
+              
+              <button 
+                className="reset-button"
+                onClick={() => {
+                  setPhysicsSettings({
+                    gravity: -9.8,
+                    bodyMass: 1.0,
+                    bodyDamping: 0.8,
+                    bodyFriction: 0.5,
+                    collisionMargin: 0.01,
+                    constraintStiffness: 0.8,
+                    constraintDamping: 0.1,
+                  });
+                }}
+                style={{
+                  marginTop: '15px',
+                  padding: '8px 16px',
+                  background: '#3a3a5e',
+                  border: '1px solid #555',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  width: '100%'
+                }}
+              >
+                🔄 Restaurar Valores por Defecto
+              </button>
             </div>
           )}
         </div>

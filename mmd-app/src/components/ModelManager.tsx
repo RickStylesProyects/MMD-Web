@@ -54,11 +54,76 @@ export function ModelManager() {
 
   const [expandedTransformId, setExpandedTransformId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<'models' | 'stages' | 'audio'>('models');
+  
+  // State for PMX variant selection modal
+  const [pmxVariants, setPmxVariants] = useState<File[]>([]);
+  const [pendingTextureMap, setPendingTextureMap] = useState<Map<string, string> | null>(null);
+  const [showVariantModal, setShowVariantModal] = useState(false);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      addModel(e.target.files[0]);
+  // Helper to load PMX file and automatically load textures from same folder
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    try {
+      // Convert FileList to Array
+      const fileArray = Array.from(files);
+      
+      // Find ALL .pmx files
+      const pmxFiles = fileArray.filter(f => f.name.toLowerCase().endsWith('.pmx'));
+      
+      if (pmxFiles.length === 0) {
+        alert('No se encontró ningún archivo .pmx en la carpeta seleccionada');
+        return;
+      }
+      
+      let pmxFile: File;
+      
+      // Create texture map from all image files
+      const textureMap = new Map<string, string>();
+      fileArray.forEach(file => {
+        const name = file.name.toLowerCase();
+        if (name.endsWith('.png') || name.endsWith('.jpg') || 
+            name.endsWith('.bmp') || name.endsWith('.tga') ||
+            name.endsWith('.jpeg')) {
+          const blobUrl = URL.createObjectURL(file);
+          textureMap.set(file.name, blobUrl);
+          
+          if (file.webkitRelativePath) {
+            const relativePath = file.webkitRelativePath.split('/').slice(1).join('/');
+            if (relativePath) {
+              textureMap.set(relativePath, blobUrl);
+            }
+          }
+          
+          console.log('🖼️ Loaded texture:', file.name);
+        }
+      });
+      
+      console.log(`✅ Loaded ${textureMap.size} textures`);
+      
+      // If multiple PMX files, show modal for selection
+      if (pmxFiles.length > 1) {
+        setPmxVariants(pmxFiles);
+        setPendingTextureMap(textureMap);
+        setShowVariantModal(true);
+        return;
+      }
+      
+      // Single PMX file, load directly
+      pmxFile = pmxFiles[0];
+      console.log('📁 Loading model and textures from folder...');
+      addModel(pmxFile, textureMap);
+      
+
+      
+    } catch (error) {
+      console.error('Error loading model:', error);
+      alert('Error al cargar modelo: ' + error);
     }
+    
+    // Reset input
+    e.target.value = '';
   };
 
   const handleStageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -72,6 +137,7 @@ export function ModelManager() {
       setAudio(e.target.files[0]);
     }
   };
+
 
 
 
@@ -191,12 +257,16 @@ export function ModelManager() {
               <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-white/20 rounded-lg cursor-pointer hover:border-indigo-500 hover:bg-white/5 transition-colors group">
                 <div className="flex flex-col items-center justify-center py-3">
                   <Upload className="w-6 h-6 mb-1 text-indigo-400 group-hover:scale-110 transition-transform" />
-                  <p className="text-xs text-gray-400 group-hover:text-white transition-colors">Upload .pmx file</p>
+                  <p className="text-xs text-gray-400 group-hover:text-white transition-colors">Seleccionar carpeta del modelo</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">(.pmx + texturas)</p>
                 </div>
                 <input 
                   type="file" 
-                  className="hidden" 
-                  accept=".pmx,.pmd"
+                  className="hidden"
+                  // @ts-ignore - webkitdirectory is not in TypeScript types
+                  webkitdirectory="true"
+                  directory="true"
+                  multiple
                   onChange={handleFileUpload}
                 />
               </label>
@@ -610,8 +680,80 @@ export function ModelManager() {
                   )}
                 </div>
              </div>
-         );
-      })()}
-    </div>
-  );
+          );
+       })()}
+       
+       {/* PMX Variant Selection Modal */}
+       {showVariantModal && (
+         <div 
+           className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+           onClick={() => {
+             setShowVariantModal(false);
+             setPmxVariants([]);
+             setPendingTextureMap(null);
+           }}
+         >
+           <div 
+             className="bg-[#1a1a2e] border-2 border-indigo-500/50 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl"
+             onClick={(e) => e.stopPropagation()}
+           >
+             <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/10">
+               <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                 <Box className="w-5 h-5 text-indigo-400" />
+                 Seleccionar Variante del Modelo
+               </h3>
+               <button 
+                 onClick={() => {
+                   setShowVariantModal(false);
+                   setPmxVariants([]);
+                   setPendingTextureMap(null);
+                 }}
+                 className="text-gray-400 hover:text-white transition-colors"
+               >
+                 ✕
+               </button>
+             </div>
+             
+             <p className="text-sm text-gray-400 mb-4">
+               Se encontraron {pmxVariants.length} variantes. Selecciona la que deseas cargar:
+             </p>
+             
+             <div className="space-y-2 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+               {pmxVariants.map((file, index) => (
+                 <button
+                   key={index}
+                   onClick={() => {
+                     console.log(`✅ Seleccionada variante: ${file.name}`);
+                     console.log('📁 Loading model and textures from folder...');
+                     addModel(file, pendingTextureMap!);
+                     setShowVariantModal(false);
+                     setPmxVariants([]);
+                     setPendingTextureMap(null);
+                   }}
+                   className="w-full flex items-center gap-3 p-3 rounded-lg bg-white/5 hover:bg-indigo-500/20 border border-white/10 hover:border-indigo-500/50 transition-all group"
+                 >
+                   <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+                     {index + 1}
+                   </div>
+                   <div className="flex-1 text-left">
+                     <p className="text-sm font-medium text-white group-hover:text-indigo-200 transition-colors truncate">
+                       {file.name}
+                     </p>
+                     <p className="text-xs text-gray-500">
+                       {(file.size / 1024 / 1024).toFixed(2)} MB
+                     </p>
+                   </div>
+                   <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                     <div className="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center">
+                       <span className="text-white text-xs">→</span>
+                     </div>
+                   </div>
+                 </button>
+               ))}
+             </div>
+           </div>
+         </div>
+       )}
+     </div>
+   );
 }

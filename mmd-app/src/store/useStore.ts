@@ -18,6 +18,7 @@ export interface MMDModel {
   activeMorphs?: Record<string, number>;
   availableMorphs?: string[];
   isLocalUrl?: boolean;
+  textureMap?: Map<string, string>; // Map of texture filenames to blob URLs
   position: [number, number, number];
   rotation: [number, number, number];
   scale: number;
@@ -139,6 +140,27 @@ export interface AudioState {
   delay: number;
 }
 
+export interface PhysicsSettings {
+  enabled: boolean;
+  gravity: number;              // m/s²
+  worldDamping: number;         // Global damping
+  warmupFrames: number;         // Stabilization frames
+  resetOnLoop: boolean;         // Reset physics on animation loop
+  
+  // Rigid body parameters
+  bodyMass: number;             // Mass multiplier
+  bodyDamping: number;          // Movement damping (0-1)
+  bodyFriction: number;         // Friction (0-1)
+  bodyRestitution: number;      // Bounce/elasticity (0-1)
+  
+  // Collision parameters
+  collisionMargin: number;      // Collision margin (prevents penetration)
+  
+  // Constraint parameters
+  constraintStiffness: number;  // Joint stiffness (0-1)
+  constraintDamping: number;    // Joint damping (0-1)
+}
+
 export interface MMDStore {
   // Models
   models: MMDModel[];
@@ -172,6 +194,9 @@ export interface MMDStore {
   
   // Audio
   audioState: AudioState;
+  
+  // Physics
+  physicsSettings: PhysicsSettings;
   
   // Model Actions
   addModel: (file: File) => void;
@@ -334,6 +359,24 @@ const defaultAudioState: AudioState = {
   delay: 0,
 };
 
+const defaultPhysicsSettings: PhysicsSettings = {
+  enabled: true,
+  gravity: -9.8,
+  worldDamping: 0.01,
+  warmupFrames: 60,
+  resetOnLoop: true,
+  
+  bodyMass: 1.0,
+  bodyDamping: 0.8,
+  bodyFriction: 0.5,
+  bodyRestitution: 0.0,
+  
+  collisionMargin: 0.01,  // Increase this to prevent penetration
+  
+  constraintStiffness: 0.8,
+  constraintDamping: 0.1,
+};
+
 // ============ STORE ============
 
 export const useStore = create<MMDStore>()(
@@ -354,9 +397,10 @@ export const useStore = create<MMDStore>()(
       atmosphericSettings: defaultAtmosphericSettings,
       animationState: defaultAnimationState,
       audioState: defaultAudioState,
+      physicsSettings: defaultPhysicsSettings,
       
       // Model Actions
-      addModel: (file: File) => {
+      addModel: (file: File, textureMap?: Map<string, string>) => {
         let url = '';
         if (file.path) {
           // Electron path - custom protocol for textures
@@ -372,6 +416,7 @@ export const useStore = create<MMDStore>()(
           url,
           file,
           isLocalUrl: false,
+          textureMap, // Store texture map
           position: [0, 0, 0],
           rotation: [0, 0, 0],
           scale: 1,

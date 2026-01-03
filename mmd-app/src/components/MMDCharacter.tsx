@@ -10,7 +10,6 @@ import { rampTextureCache } from '../lib/textureGenerator';
 import { useAmmo } from './AmmoProvider';
 import { GenshinToonShader } from '../materials/GenshinShader';
 import { FaceShadingShader } from '../materials/FaceShadingShader';
-import { HairShader } from '../materials/HairShader';
 import { GradientRampShader } from '../materials/GradientRampShader';
 import { shaderCache } from '../lib/shaderCache';
 
@@ -86,12 +85,13 @@ export function MMDCharacter({
     // Face keywords (Chinese model naming like Ganyu)
     // Now INCLUDING 肌 (skin) to ensure head and body use the same shader
     return (
+      lowerName.includes('颜') ||        // Chinese: yán (face/countenance) - 颜, 颜2
       lowerName.includes('面') ||        // Chinese: miàn (face) - 面1, 面2
       lowerName.includes('脸') ||        // Chinese: liǎn (face) - 脸红 (blush)
       lowerName.includes('肌') ||        // SKIN - now treated as face material
       lowerName.includes('眉') ||        // eyebrow
       lowerName.includes('目') ||        // eye (目, 目星, 白目)
-      lowerName.includes('眼') ||        // eye (alternative)
+      lowerName.includes('眼') ||        // eye (alternative) - also catches 神之眼
       lowerName.includes('睫') ||        // eyelash
       lowerName.includes('口') ||        // mouth (口舌)
       lowerName.includes('齿') ||        // teeth
@@ -109,9 +109,10 @@ export function MMDCharacter({
     return (
       lowerName.includes('hair') ||
       lowerName.includes('髪') ||        // Japanese: kami (hair)
+      lowerName.includes('髮') ||        // Chinese traditional: fà (hair)
       lowerName.includes('前髪') ||      // Bangs
       lowerName.includes('後髪') ||      // Back hair
-      lowerName.includes('发') ||        // Chinese: fà (hair)
+      lowerName.includes('发') ||        // Chinese simplified: fà (hair)
       lowerName.includes('kami') ||      // Romanized Japanese
       lowerName.includes('ahoge') ||     // Ahoge/antenna hair
       lowerName.includes('ponytail') ||
@@ -143,6 +144,112 @@ export function MMDCharacter({
     return m;
   };
 
+  // Helper functions for texture replacement
+  const getTextureNameFromUrl = (url: string): string => {
+    // Extract filename from blob URL or path
+    const parts = url.split('/');
+    const filename = parts[parts.length - 1];
+    // Decode URL encoding (e.g., %E9%A2%9C -> 顔)
+    return decodeURIComponent(filename);
+  };
+
+  const findTextureInMap = (
+    textureName: string,
+    textureMap: Map<string, string>
+  ): string | undefined => {
+    // Try exact match first
+    if (textureMap.has(textureName)) {
+      return textureMap.get(textureName);
+    }
+
+    // Try case-insensitive match
+    const lowerName = textureName.toLowerCase();
+    for (const [key, value] of textureMap.entries()) {
+      if (key.toLowerCase() === lowerName) {
+        return value;
+      }
+    }
+
+    // Try matching with subdirectory (e.g., "tex/image.png" matches "image.png")
+    for (const [key, value] of textureMap.entries()) {
+      if (key.endsWith('/' + textureName) || key.endsWith('\\' + textureName)) {
+        return value;
+      }
+    }
+
+    // Try matching just the basename
+    for (const [key, value] of textureMap.entries()) {
+      const keyBasename = key.split('/').pop()?.split('\\').pop();
+      if (keyBasename === textureName) {
+        return value;
+      }
+    }
+
+    return undefined;
+  };
+
+  const replaceTexturesWithMap = (loadedMesh: THREE.SkinnedMesh, textureMap: Map<string, string>) => {
+    console.log('🖼️ Replacing textures using texture map...');
+    let replacedCount = 0;
+
+    loadedMesh.traverse((child) => {
+      if (child.isMesh && child.material) {
+        const materials = Array.isArray(child.material) 
+          ? child.material 
+          : [child.material];
+
+        materials.forEach((mat: any) => {
+          // Replace diffuse map
+          if (mat.map && mat.map.image?.src) {
+            const textureName = getTextureNameFromUrl(mat.map.image.src);
+            const blobUrl = findTextureInMap(textureName, textureMap);
+            if (blobUrl) {
+              const textureLoader = new THREE.TextureLoader();
+              textureLoader.load(blobUrl, (texture) => {
+                mat.map = texture;
+                mat.needsUpdate = true;
+                console.log('✅ Replaced texture:', textureName);
+              });
+              replacedCount++;
+            }
+          }
+
+          // Replace environment map (sphere map)
+          if (mat.envMap && mat.envMap.image?.src) {
+            const textureName = getTextureNameFromUrl(mat.envMap.image.src);
+            const blobUrl = findTextureInMap(textureName, textureMap);
+            if (blobUrl) {
+              const textureLoader = new THREE.TextureLoader();
+              textureLoader.load(blobUrl, (texture) => {
+                mat.envMap = texture;
+                mat.needsUpdate = true;
+                console.log('✅ Replaced envMap:', textureName);
+              });
+              replacedCount++;
+            }
+          }
+
+          // Replace emissive map
+          if (mat.emissiveMap && mat.emissiveMap.image?.src) {
+            const textureName = getTextureNameFromUrl(mat.emissiveMap.image.src);
+            const blobUrl = findTextureInMap(textureName, textureMap);
+            if (blobUrl) {
+              const textureLoader = new THREE.TextureLoader();
+              textureLoader.load(blobUrl, (texture) => {
+                mat.emissiveMap = texture;
+                mat.needsUpdate = true;
+                console.log('✅ Replaced emissiveMap:', textureName);
+              });
+              replacedCount++;
+            }
+          }
+        });
+      }
+    });
+
+    console.log(`✅ Replaced ${replacedCount} texture references`);
+  };
+
   // Apply shader system to model - WITH FACE SDF, HAIR, RAMP, AND MATCAP SUPPORT
   const applyGenshinShader = useCallback((targetMesh: THREE.SkinnedMesh) => {
     console.log('🎨 Applying Advanced Shader System v2...');
@@ -168,16 +275,21 @@ export function MMDCharacter({
           console.log(`📦 Processing material: ${matName} | Face: ${isFace} | Hair: ${isHair}`);
           
           // Choose shader based on material type
+          // NEW STRUCTURE: Only 2 shader types
+          // 1. Face/Skin -> FaceShadingShader (with SDF support)
+          // 2. Hair/Body/Clothing -> GradientRampShader (unified shader for consistency)
           let shaderSource;
+          let materialType: 'face' | 'body';
+          
           if (isFace) {
-            // Face SDF Shader
+            // Face/Skin materials use specialized face shader
             shaderSource = FaceShadingShader;
-          } else if (isHair) {
-            // Hair Shader with anisotropic specular
-            shaderSource = HairShader;
+            materialType = 'face';
           } else {
-            // Body/Cloth shader with ramp and matcap support
+            // Everything else (Hair, Body, Clothing) uses the same shader
+            // This ensures consistent lighting across all non-face materials
             shaderSource = GradientRampShader;
+            materialType = 'body';
           }
           
           // Create shader material using cache
@@ -215,7 +327,7 @@ export function MMDCharacter({
             shaderMat.uniforms.uMap.value = oldMat.map;
             shaderMat.uniforms.uHasMap.value = 1.0;
             
-            // Face SDF texture check
+            // Face SDF texture check (only for face materials)
             if (isFace && oldMat.userData?.faceSDF) {
               shaderMat.uniforms.tFaceSDF.value = oldMat.userData.faceSDF;
               shaderMat.uniforms.uHasFaceSDF.value = 1.0;
@@ -239,8 +351,8 @@ export function MMDCharacter({
           shaderMat.alphaTest = oldMat.alphaTest || 0.01; // Use original or very low threshold
           shaderMat.depthWrite = oldMat.depthWrite !== false; // Inherit or default to true
           
-          // Apply gradient ramp (for body/cloth materials)
-          if (!isFace && !isHair) {
+          // Apply gradient ramp (for all non-face materials: hair, body, clothing)
+          if (!isFace) {
              if (shaderMat.uniforms.uRampTexture) {
                 shaderMat.uniforms.uRampTexture.value = defaultRamp || whiteTex;
              }
@@ -252,8 +364,9 @@ export function MMDCharacter({
           // Mark with metadata
           shaderMat.userData = { 
             isGenshinShader: true, 
-            materialType: isFace ? 'face' : (isHair ? 'hair' : 'body'),
-            originalName: matName
+            materialType: materialType,
+            originalName: matName,
+            isHair: isHair // Keep track for potential future use
           };
           shaderMat.needsUpdate = true;
           
@@ -287,9 +400,16 @@ export function MMDCharacter({
     });
   }, []); // Stable reference
   
-  // Load model
+  // ========== MAIN EFFECT: Load Model ==========
   useEffect(() => {
-    if (!url) return;
+    console.log('🚀 MMDCharacter useEffect triggered - URL:', url);
+    console.log('🔍 currentModel at start:', currentModel);
+    console.log('🔍 currentModel.textureMap at start:', currentModel?.textureMap);
+    
+    if (!url) {
+      console.log('⚠️ No URL provided, skipping load');
+      return;
+    }
     
     setIsLoading(true);
     setLoadError(null);
@@ -368,16 +488,108 @@ export function MMDCharacter({
       meshRef.current = cachedMesh;
       applyGenshinShader(cachedMesh);
       initializeRobustSystem(cachedMesh);
+      
+      // Populate Available Morphs
+      if (cachedMesh.morphTargetDictionary) {
+          const morphs = Object.keys(cachedMesh.morphTargetDictionary);
+          if (currentModel) {
+              console.log("😊 Registering Morphs:", morphs.length, "for model ID:", currentModel.id, "URL:", url);
+              setAvailableMorphs(currentModel.id, morphs);
+          }
+      }
+      
       setMesh(cachedMesh);
       setIsLoading(false);
       return;
     }
+
+    // Create custom LoadingManager if textureMap is available
+    let customLoader = loader;
     
+    // Debug: Check if textureMap exists
+    console.log('🔍 Debug - currentModel:', currentModel?.id);
+    console.log('🔍 Debug - textureMap exists:', !!currentModel?.textureMap);
+    console.log('🔍 Debug - textureMap size:', currentModel?.textureMap?.size);
+    
+    if (currentModel?.textureMap && currentModel.textureMap.size > 0) {
+      console.log('🎨 Creating custom loader with texture map...');
+      console.log('📋 Texture map contents:', Array.from(currentModel.textureMap.keys()));
+      
+      const loadingManager = new THREE.LoadingManager();
+      
+      // Intercept texture loading
+      loadingManager.setURLModifier((urlToLoad) => {
+        // Extract filename from URL and normalize path separators
+        const parts = urlToLoad.split('/');
+        let filename = decodeURIComponent(parts[parts.length - 1]);
+        
+        // Normalize the full relative path (replace backslashes with forward slashes)
+        let relativePath = urlToLoad.includes('\\') 
+          ? urlToLoad.replace(/\\/g, '/') 
+          : urlToLoad;
+        
+        // Extract just the path part (remove blob: prefix if present)
+        if (relativePath.startsWith('blob:')) {
+          const blobParts = relativePath.split('/');
+          relativePath = blobParts.slice(3).join('/'); // Skip blob:http://localhost:5173/
+        }
+        
+        console.log('🔍 Trying to load texture:', relativePath, 'from URL:', urlToLoad);
+        
+        // Try exact match first (with normalized path)
+        let blobUrl = currentModel.textureMap!.get(relativePath);
+        
+        // Try with just filename
+        if (!blobUrl) {
+          blobUrl = currentModel.textureMap!.get(filename);
+        }
+        
+        // Try searching in the map with various path variations
+        if (!blobUrl) {
+          for (const [key, value] of currentModel.textureMap!.entries()) {
+            // Normalize the key for comparison
+            const normalizedKey = key.replace(/\\/g, '/');
+            
+            // Check if paths match (case-insensitive)
+            if (normalizedKey.toLowerCase() === relativePath.toLowerCase()) {
+              blobUrl = value;
+              break;
+            }
+            
+            // Check if key ends with the filename
+            if (normalizedKey.endsWith('/' + filename) || key.endsWith('\\' + filename)) {
+              blobUrl = value;
+              break;
+            }
+            
+            // Case-insensitive filename match
+            if (normalizedKey.toLowerCase().endsWith('/' + filename.toLowerCase())) {
+              blobUrl = value;
+              break;
+            }
+          }
+        }
+        
+        if (blobUrl) {
+          console.log('✅ Replaced texture URL:', relativePath, '→', blobUrl.substring(0, 50) + '...');
+          return blobUrl;
+        }
+        
+        console.warn('⚠️ Texture not found in map:', relativePath);
+        console.warn('📋 Available textures:', Array.from(currentModel.textureMap!.keys()));
+        return urlToLoad;
+      });
+      
+      customLoader = new MMDLoader(loadingManager);
+    } else {
+      console.log('⚠️ No textureMap available or empty');
+    }
+
     // Modify URL for blob handling
     const modifiedUrl = url.startsWith('blob:') ? url + '#.pmx' : url;
     
     console.log("📥 Loading PMX:", modifiedUrl);
-    loader.load(
+    customLoader.load(
       modifiedUrl,
       (loadedMesh) => {
         console.log("✅ MMD Model loaded successfully:", url);
@@ -647,6 +859,11 @@ export function MMDCharacter({
          try {
            helperRef.current.update(step);
            
+           // Reset error counter on successful update
+           if (window._physicsErrorCount) {
+             window._physicsErrorCount = 0;
+           }
+           
              // Debug log occasionally
            if (!window._helperUpdateLogged) {
              window._helperUpdateLoggedCounters = (window._helperUpdateLoggedCounters || 0) + 1;
@@ -660,7 +877,34 @@ export function MMDCharacter({
            }
            
          } catch (e) {
-           console.error("Helper update error:", e);
+           // Track consecutive physics errors
+           window._physicsErrorCount = (window._physicsErrorCount || 0) + 1;
+           
+           // Only log the first few errors to avoid spam
+           if (window._physicsErrorCount <= 3) {
+             console.error(`❌ Helper update error (${window._physicsErrorCount}/3):`, e);
+           }
+           
+           // After 3 consecutive errors, disable physics to prevent crash loop
+           if (window._physicsErrorCount === 3) {
+             console.error('🚨 CRITICAL: Physics system failing repeatedly. Disabling physics to prevent crash loop.');
+             console.error('💡 Try reloading the page or loading a different model.');
+             
+             // Attempt to disable physics on the helper
+             try {
+               if (mesh && helperRef.current.objects.has(mesh)) {
+                 const entry = helperRef.current.objects.get(mesh);
+                 // @ts-ignore
+                 if (entry?.physics) {
+                   // @ts-ignore
+                   entry.physics = null;
+                   console.log('✅ Physics disabled for current model');
+                 }
+               }
+             } catch (disableError) {
+               console.error('Failed to disable physics:', disableError);
+             }
+           }
          }
        } else if (mixerRef.current) {
          // Fallback if helper missing for some reason
